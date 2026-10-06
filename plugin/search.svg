@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Zitatlotse">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#5b36bf"/>
+  <path d="M18 1v7l-2.2-1.6L13.6 8V1" fill="#ffbf47"/>
+  <path d="M5 10h6v5l-2 3H6l2-3H5zm8 0h6v5l-2 3h-3l2-3h-3z" fill="#fff"/>
+</svg>

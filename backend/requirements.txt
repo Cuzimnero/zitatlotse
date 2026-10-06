@@ -1,0 +1,6 @@
+PyMuPDF>=1.24,<2
+sentence-transformers>=5.1,<6
+transformers>=4.51,<5
+bert-score>=0.3.13,<1
+numpy>=1.26,<3
+keyring>=25,<27

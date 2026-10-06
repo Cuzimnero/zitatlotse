@@ -1,0 +1,5 @@
+# Small dependency set for isolated tests. No ML weights or provider calls.
+# For the actual search service, install backend/requirements.txt instead.
+PyMuPDF>=1.24,<2
+numpy>=1.26,<3
+keyring>=25,<27

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "Zitatlotse",
+  "version": "0.26.3",
+  "description": "Lokale semantische Suche nach Zitaten in Zotero-PDFs",
+  "author": "Cuzimnero",
+  "applications": {
+    "zotero": {
+      "id": "quote-search@local.example",
+      "strict_min_version": "10.0",
+      "strict_max_version": "10.0.*"
+    }
+  }
+}
