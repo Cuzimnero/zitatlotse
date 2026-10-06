@@ -1,19 +1,19 @@
-# Echte Zotero-Oberfläche
+# Zotero UI screenshots
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-Die Bilder sind Ausschnitte echter, zuvor bereitgestellter Zotero-Aufnahmen. Es sind keine nachgebauten Oberflächen oder generierten Mockups. Die Ausschnitte zeigen frühere UI-Stände; 0.27.0 ergänzt vor allem die vollständige Installation. Eine neue vollständige Screenshot-Serie für diesen Release steht noch aus.
+These images are genuine crops from Zotero screenshots shared earlier. They are not recreated interfaces or generated mockups. They show earlier UI versions; version 0.27.0 mainly adds the complete runtime installer. A fresh, complete screenshot set for this release is still pending.
 
-## KI-Chat
+## AI chat
 
-![Originalfrage und zitierte Antwort im Zotero-Chat](assets/screenshots/ai-chat-example.png)
+![Original question and cited answer in the Zotero chat](assets/screenshots/ai-chat-example.png)
 
-Frage in eigenen Worten, Antwort mit Quellenverweisen. Die Fundstellen lassen sich darunter öffnen und speichern.
+Ask in your own words and review the answer with source references. Open and save passages from the results below.
 
-## Dokumentübersicht
+## Document overview
 
-![Ringdiagramm und Kategorien der Dokumentähnlichkeit](assets/screenshots/document-overview-example.png)
+![Ring chart and document similarity groups](assets/screenshots/document-overview-example.png)
 
-Kategorien anhand des besten Chunk-Werts pro Dokument. Die Prozentwerte zählen den Anteil der Dokumente in einer Gruppe; sie sind keine Ähnlichkeitswahrscheinlichkeit.
+Groups use each document's highest chunk score. Percentages count the share of documents in each group; they are not probabilities of similarity.
 
-Die Screenshots zeigen Beispielresultate aus früheren Suchen und sind kein Qualitätsnachweis der Retrieval-Pipeline. Die komplette Oberfläche und ihre Funktionen sind in [Funktionen](FEATURES.md) beschrieben.
+These screenshots show examples from earlier searches and are not a quality claim about the retrieval pipeline. See the [feature catalog](FEATURES.md) for the complete interface and its behavior.

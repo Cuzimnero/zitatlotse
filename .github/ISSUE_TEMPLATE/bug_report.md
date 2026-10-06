@@ -1,33 +1,33 @@
 ---
-name: Fehler melden
-about: Einen reproduzierbaren Fehler in Zitatlotse beschreiben
+name: Report a bug
+about: Describe a reproducible issue in Zitatlotse
 title: ""
 labels: "bug"
 assignees: ""
 ---
 
-## Was passiert?
+## What happened?
 
-## Erwartetes Verhalten
+## What did you expect to happen?
 
-## Schritte zum Reproduzieren
+## Steps to reproduce
 
 1.
 2.
 3.
 
-## Umgebung
+## Environment
 
-- Zitatlotse-Version:
-- Zotero-Version:
-- Windows-Version:
-- Python-Version:
-- Embedding-Modell:
-- KI-Anbieter und Modell, falls relevant:
-- Suchmodus und Bereich (anonymisiert):
+- Zitatlotse version:
+- Zotero version:
+- Windows version:
+- Python version:
+- Embedding model:
+- AI provider and model, if relevant:
+- Search mode and scope (anonymized):
 
-## Testfrage oder synthetisches Beispiel
+## Test query or synthetic example
 
-## Bereinigte Fehlermeldung
+## Sanitized error message
 
-Bitte keine Schlüssel, PDFs, Datenbanken, privaten Textstellen oder vollständigen Anbieterantworten anhängen.
+Do not attach API keys, PDFs, databases, private passages or full provider responses.

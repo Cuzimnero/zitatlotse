@@ -1,95 +1,95 @@
-# Architektur
+# Architecture
 
-[Zur Projektseite](../README.md) · [Nutzungsabläufe](WORKFLOWS.md)
+[Project page](../README.md) · [User workflows](WORKFLOWS.md)
 
-## Komponenten
+## Components
 
 ```mermaid
 flowchart TB
-    Z[Zotero 10: Bibliotheken / Sammlungen / Reader] <--> P[plugin/bootstrap.js]
-    P <-->|Lokales HTTP auf 127.0.0.1:8765| S[backend/server.py]
-    L[launcher.py: Supervisor und Prozesssperre] --> S
-    S --> E[engine.py: Verarbeitung und Suche]
-    E --> M[Lokaler Encoder und BERTScore]
+    Z[Zotero 10: libraries / collections / reader] <--> P[plugin/bootstrap.js]
+    P <-->|Local HTTP on 127.0.0.1:8765| S[backend/server.py]
+    L[launcher.py: supervisor and process lock] --> S
+    S --> E[engine.py: processing and search]
+    E --> M[Local encoder and BERTScore]
     E <--> D[(SQLite)]
     S --> A[agent_search.py / evidence_search.py]
     A --> E
-    A <-->|Optionale Modellaufrufe| K[OpenAI / Anthropic / DeepSeek / Ollama]
+    A <-->|Optional model calls| K[OpenAI / Anthropic / DeepSeek / Ollama]
     S --> R[document_relevance.py]
     R --> E
-    S --> J[search_activity.py: Jobs / Ereignisse / Abbruch]
+    S --> J[search_activity.py: jobs / events / cancellation]
 ```
 
-## Dateien und Zuständigkeiten
+## Files and responsibilities
 
-| Datei | Aufgabe |
+| File | Responsibility |
 | --- | --- |
-| `plugin/bootstrap.js` | Zotero-Integration, Verarbeitung, Suchbereich, Oberfläche, Reader, Zitierstil, temporäre Sitzungen, Startanforderung. |
-| `backend/server.py` | Lokale HTTP-Endpunkte, Anbieteranfragen, einstufige KI-Suche und Verbindungstest. |
-| `backend/launcher.py` | Instanzsperre, Protokollierung, Worker-Start und Wiederanlauf. |
-| `backend/engine.py` | SQLite, PDF-Text, Chunks, Themenmerkmale, Sprachschätzung, Cosinus, BERTScore, Suchstände und gespeicherte Zitate. |
-| `backend/embedding_models.py` | Modellprofile, eigene Hugging-Face-Modelle, Eingabepräfixe, Kompatibilitätsprüfung und atomarer Neuaufbau. |
-| `backend/provider_models.py` | Modellkataloge und Vorschläge pro KI-Anbieter. |
-| `backend/agent_search.py` | Mehrstufige Suchschleife, Werkzeuge, Budgets, Referenzprüfung und Rückfälle. |
-| `backend/evidence_search.py` | Belegsuchen, Pro-/Kontra-/Neutral-Bewertung und Bilanz. |
-| `backend/document_relevance.py` | Maximaler Chunk-Wert je Dokument, Inhaltsduplikate und relative Kategorien. |
-| `backend/search_scope.py` | Validierung und Vergleich der festgelegten Bibliotheks-/Dateiauswahl. |
-| `backend/search_activity.py` | Asynchrone Suchjobs, Ereignisse, Statusabfrage und Abbruch. |
-| `backend/settings.py` | Konfiguration und API-Schlüssel über den OS-Speicher. |
+| `plugin/bootstrap.js` | Zotero integration, processing, search scope, UI, reader, citation style, temporary sessions and startup requests. |
+| `backend/server.py` | Local HTTP endpoints, provider requests, one-step AI search and connection tests. |
+| `backend/launcher.py` | Instance lock, logging, worker startup and recovery. |
+| `backend/engine.py` | SQLite, PDF text, chunks, topic features, language estimation, cosine, BERTScore, search state and saved quotations. |
+| `backend/embedding_models.py` | Model profiles, custom Hugging Face models, input prefixes, compatibility checks and atomic rebuilds. |
+| `backend/provider_models.py` | Model catalogs and suggestions for each AI provider. |
+| `backend/agent_search.py` | Multi-step search loop, tools, budgets, reference validation and fallbacks. |
+| `backend/evidence_search.py` | Evidence searches, supporting/opposing/neutral review and tally. |
+| `backend/document_relevance.py` | Highest chunk score per document, content deduplication and relative groups. |
+| `backend/search_scope.py` | Validation and comparison of the fixed library/file selection. |
+| `backend/search_activity.py` | Asynchronous search jobs, events, status queries and cancellation. |
+| `backend/settings.py` | Configuration and API keys through the OS credential store. |
 
-## Verarbeitung und Speicher
+## Processing and storage
 
-Der Plugin-Code erhält die ausgewählten Anhänge und Metadaten über Zotero. Der lokale Dienst liest die PDF-Datei über deren lokalen Pfad. Es gibt keinen direkten Schreibzugriff auf Zoteros eigene Datenbank.
+The plugin receives selected attachments and metadata from Zotero. The local service reads the PDF through its local path. It does not write directly to Zotero's database.
 
-PDF-Text wird pro Seite normalisiert und in überlappende Abschnitte zerlegt: maximal 100 Wörter, bis zu 20 Wörter Überlappung. Pro Chunk werden Bibliothek, Anhang, Seite, Reihenfolge, Text und Embedding gespeichert. Der PDF-Fundort wird bei Bedarf über Texterkennung und Koordinaten aufgelöst.
+PDF text is normalized page by page and split into overlapping passages: up to 100 words with up to 20 words of overlap. Each chunk stores its library, attachment, page, order, text and embedding. PDF locations are resolved from text and coordinates when possible.
 
-Die wichtigsten Inhaltsbegriffe, Wortpaare und der Titel liefern bis zu 16 Themenmerkmale. Der Themenvektor ist der normalisierte Mittelwert der Chunk-Vektoren. Normalisierte Chunk-Vektoren liegen in einem kompakten Binärformat in SQLite; frühere JSON-Vektoren werden bei Bedarf migriert.
+Important content terms, word pairs and the title provide up to 16 topic features. The topic vector is the normalized mean of chunk vectors. Normalized chunk vectors are stored in a compact binary format in SQLite; older JSON vectors are migrated when needed.
 
-Die zentralen Tabellen sind `documents`, `chunks`, `saved_quotes` und `index_metadata`. Bibliothekskennungen bleiben auch dann Teil der Zuordnung, wenn zwei Bibliotheken identische Anhangskennungen enthalten. Modellkennung und Konfiguration gehören zum Index, damit Query und gespeicherte Vektoren zusammenpassen.
+The main tables are `documents`, `chunks`, `saved_quotes` and `index_metadata`. Library IDs remain part of the mapping even when two libraries contain identical attachment IDs. The model ID and configuration are stored with the index so that query and document vectors stay compatible.
 
-## Stufen der lokalen Suche
+## Local search stages
 
-1. **Bereich festlegen:** eine Bibliothekskennung und optional eine feste Anhangsliste der Sammlung. Eine leere Liste bleibt leer.
-2. **Grober Dokumentfilter:** bei größeren Beständen besonders weit entfernte Dokumente entfernen. Mindestens 85 % bleiben grundsätzlich erhalten; passende Themenmerkmale können weitere Dokumente erhalten. Kurze Einzelbegriffe umgehen diesen Ausschluss.
-3. **Cosinus:** Query gegen jeden Chunk der verbliebenen Dokumente berechnen. Kandidaten innerhalb von 0,06 zum besten Wert der direkten Suche weitergeben. Mehrsprachige und KI-Varianten werden so behandelt, dass eine stärkere Variante eine passende andere Variante nicht verdrängt.
-4. **BERTScore:** sämtliche qualifizierten Kandidaten in begrenzten Gruppen nachbewerten. Die kombinierte Sortierung verwendet 65 % BERTScore und 35 % Cosinus.
-5. **Prüfen und bereinigen:** Relevanzschwellen, wörtliche Suchfälle und modellspezifische Regeln anwenden; wiederholte Originalstellen entfernen. Eine passende kurze wörtliche Anfrage erhält verschiedene tatsächliche Fundorte.
-6. **Paginieren:** geprüfte Treffer und Suchzustand speichern; höchstens 20 Zitate je UI-Seite anzeigen. Suchstände laufen nach 900 Sekunden ab.
+1. **Set scope:** one library ID and optionally a fixed attachment list for a collection. An empty list stays empty.
+2. **Coarse document filter:** for larger libraries, remove documents that appear especially distant. At least 85% are generally retained; matching topic features may retain additional documents. Short single-term queries bypass this exclusion.
+3. **Cosine:** compare the query with every chunk in the remaining documents. Pass candidates within 0.06 of the best direct-search score to the next stage. Handle multilingual and AI query variants so that a stronger variant does not displace a suitable result from another variant.
+4. **BERTScore:** rerank all qualifying candidates in bounded batches. The combined ordering uses 65% BERTScore and 35% cosine.
+5. **Validate and deduplicate:** apply relevance thresholds, literal-query cases and model-specific rules; remove repeated original passages. A matching short literal query should retain distinct real occurrences.
+6. **Paginate:** store verified results and search state; show at most 20 quotations per UI page. Search states expire after 900 seconds.
 
-Für die KI-/Belegsuche gibt es bewusst breitere Kandidatenregeln, damit die nachfolgende Auswertung Aspekte bewerten kann. Dort ist unter anderem eine größere Cosinus-Spanne von 0,15 vorgesehen. Diese Kandidaten sind noch keine als belastbar ausgewählten Zitate. Modellfamilien können eigene Mindestwerte benötigen.
+AI and evidence searches intentionally use broader candidate rules so the following model review can assess more aspects. For example, these flows allow a larger cosine range of 0.15. Those candidates are not yet quotations selected as reliable evidence. Model families may need their own minimum scores.
 
-Alle Werte sind derzeit Implementierungsparameter, keine allgemeingültige Relevanzkalibrierung. Änderungen müssen mit positiven Fragen, fachfremden Negativfällen und Bereichsgrenzen getestet werden.
+All values are current implementation parameters, not universal relevance calibration. Changes must be tested with positive queries, unrelated negative cases and scope boundaries.
 
-## KI- und Belegschicht
+## AI and evidence layer
 
-Einstufige KI-Suche formuliert Suchvarianten für die Dokumentsprachen, verwendet den lokalen Suchablauf und bewertet eine begrenzte Auswahl Originalstellen. Mehrstufige Suche lässt das Modell echte `search_library`-Aufrufe auslösen. Pro Suchschritt werden bis zu acht Originalstellen aus den abgerufenen Kandidaten in den Modellkontext aufgenommen. `finish_search` referenziert geprüfte Quellen.
+One-step AI search formulates query variants in document languages, uses the local search flow and reviews a limited set of original passages. Multi-step search lets a model make real `search_library` calls. Each step can include up to eight original passages from retrieved candidates in the model context. `finish_search` refers to validated sources.
 
-Schrittlimit, Wiederverwendung gleicher Anfragen, Referenzvalidierung, feste Bereichsgrenzen und ein Zeitbudget werden im Dienst umgesetzt. Die KI kann den Bereich nicht eigenständig erweitern. Wenn Tool Calls fehlen oder ungültig sind, erfolgt ein gekennzeichneter Rückfall auf die einstufige Suche.
+The service enforces the step limit, reuse of identical queries, reference validation, fixed scope and a time budget. The AI cannot expand the scope on its own. If tool calls are unavailable or invalid, the service falls back to one-step search with a notice.
 
-Der Belegmodus beurteilt die abgerufenen Kandidaten zusätzlich nach Pro, Kontra und neutral/unklar sowie direktem Beleg oder Teilaspekt. Die Bilanz basiert auf der Anzahl der so eingeordneten Stellen.
+Evidence mode additionally classifies retrieved candidates as supporting, opposing or neutral/unclear, and as direct evidence or a related aspect. The tally is based on the number of passages assigned to each group.
 
-## Dokumentgrafik
+## Document chart
 
-Für jedes verarbeitete Dokument im Bereich gilt:
+For each processed document in scope:
 
 ```text
-document_score = max(cosine(query_variant, chunk) für die Chunks dieses Dokuments)
+document_score = max(cosine(query_variant, chunk) for all chunks in the document)
 ```
 
-Der Wert wird unabhängig von Zitatfiltern, grober Themenvorauswahl und KI-Auswahl berechnet. Verfügbare sprachbezogene Suchvarianten werden wiederverwendet. Identische indizierte Inhalte werden anhand ihrer Text-/Seiten-/Chunk-Fingerabdrücke gruppiert. Die höchste passende Stelle bestimmt den Wert und den angebotenen PDF-Fundort.
+The score is calculated independently of quotation filters, coarse topic prefiltering and AI selection. Available language-specific query variants are reused. Identical indexed content is grouped using text/page/chunk fingerprints. The best matching passage determines the score and suggested PDF location.
 
-Die beobachtete Wertespanne wird in relative Gruppen aufgeteilt. Die Gruppenanteile zählen Dokumente; sie sind keine numerischen Cosinus-Werte. Gleiche oder fehlende Werte werden gesondert behandelt.
+The observed score range is split into relative groups. Group shares count documents; they are not cosine values. Equal or missing values are handled separately.
 
-## Modellwechsel
+## Changing models
 
-Ein neues Modell oder eine neue Eingabekonfiguration braucht neue Chunk- und Themenvektoren. Nach Bestätigung werden diese in einem separaten Staging-Bereich für alle Bibliotheken berechnet. Erst bei erfolgreichem Abschluss werden sie in einer Transaktion aktiviert. Der alte Index bleibt bis dahin verwendbar; bei einem Fehler bleibt er aktiv. Texte, Zitate und Notizen werden erhalten.
+A new model or input configuration requires new chunk and topic vectors. After confirmation, the vectors are calculated for every library in a separate staging area. They are activated in a transaction only after the rebuild succeeds. The old index remains usable until then and stays active if the rebuild fails. Text, quotations and notes are preserved.
 
-## Start unter Windows
+## Windows startup
 
-Die Release-XPI enthält die eingebettete Windows-x64-Python-Laufzeit, CPU-Bibliotheken, Backend und `runtime/setup.ps1`. Zotero entpackt das Paket unter `%USERPROFILE%\.zitatlotse`, prüft SHA-256 und Imports und startet den absoluten Python-/Launcher-Pfad automatisch. Der Launcher verhindert parallele Supervisoren über eine Betriebssystem-Dateisperre und startet den Such-Worker mit begrenzter ansteigender Wartezeit erneut.
+The release XPI contains the embedded Windows x64 Python runtime, CPU libraries, backend and `runtime/setup.ps1`. Zotero extracts the package under `%USERPROFILE%\.zitatlotse`, verifies SHA-256 and imports, then starts the absolute Python/launcher path automatically. The launcher uses an OS file lock to prevent parallel supervisors and restarts a crashed search worker with bounded increasing delays.
 
-Zotero startet beim Laden des Add-ons, beim Öffnen des Fensters sowie bei Verbindungsverlust. Ein 30-Sekunden-Check fängt auch den Verlust des gesamten Prozessbaums auf. Die normale XPI-Installation braucht keine Windows-Aufgabe und kein installiertes Python. HTTP-Verfügbarkeit und vollständige Modellbereitschaft sind zwei verschiedene Zustände. Ablauf und Tests: [Installation](INSTALLATION.md), [Status](STATUS.md).
+Zotero starts the service when the add-on loads, the window opens or the connection is lost. A 30-second check also detects loss of the whole process tree. The standard XPI installation needs no Windows task or preinstalled Python. HTTP availability and full model readiness are separate states. See [installation](INSTALLATION.md) and [test status](STATUS.md).
 
-## Skalierung
+## Scaling
 
-Der Cosinus-Vergleich bleibt ein exakter Vektorscan. Sein Aufwand wächst mit der Zahl betrachteter Chunks. BERTScore ist deutlich teurer und wird daher erst nach der Cosinus-Auswahl verwendet. Ein ANN-Index, bessere Batch-/Cache-Strategien und überprüfte Relevanzschwellen sind mögliche nächste Schritte; sie sind noch nicht als fertige Funktionen enthalten.
+Cosine comparison is still an exact vector scan; its cost grows with the number of chunks considered. BERTScore is significantly more expensive, so it runs only after cosine selection. An ANN index, better batching/cache strategies and validated relevance thresholds are possible next steps, not completed features.

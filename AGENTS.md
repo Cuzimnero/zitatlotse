@@ -1,8 +1,8 @@
-# Zitatlotse: Entwicklungsregeln
+# Zitatlotse development rules
 
-- Vor Änderungen an Suche, KI-Auswertung, Agentic Calls, Bereichsgrenzen oder Suchfenster mehrere bekannte Beispielanfragen mit dem bestehenden Stand prüfen. Nach der Änderung dieselben Fälle wiederholen.
-- Für KI-Suchänderungen den tatsächlichen Ablauf einschließlich Auswahl und Anzeige der Zitate prüfen; direkte Suche oder ausschließlich simulierte Anbieterantworten genügen nicht als Qualitätsnachweis.
-- Positive Fälle zu DINO und Wissensdistillation, einen fachfremden Negativfall ohne Zitate, Bibliotheksgrenzen und leere Sammlungen prüfen. Nur Dokumente verwenden, für deren Nutzung und gegebenenfalls Cloud-Übertragung der ausführende Nutzer die erforderliche Autorisierung hat.
-- Reproduzierbare Berichte lokal unter outputs/ speichern. Vor Veröffentlichung anonymisieren. Keine Schlüssel, rohen Anbieterantworten oder privaten Modellgedanken protokollieren.
-- Cloud-Tests sind nicht automatisch autorisiert. Konkreten Auftrag, Dokumentauswahl und mögliche Kosten beachten; bei fehlender Zustimmung nur unabhängige lokale Arbeiten fortsetzen.
-- Private Daten, Modelle, virtuelle Umgebungen und Testausgaben gehören nicht ins Repository. Der eigene Quellcode steht unter MIT; externe Lizenzbedingungen beachten.
+- Before changing search, AI evaluation, agentic calls, scope boundaries or the search window, run several known example queries against the existing version. Repeat the same cases after the change.
+- For AI search changes, check the real flow, including selection and display of quotations. Direct search or provider responses simulated only in tests are not sufficient evidence of retrieval quality.
+- Check positive DINO and knowledge-distillation cases, an unrelated negative case with no quotations, library boundaries and empty collections. Use only documents the user running the test has authorized for use and, where applicable, cloud transfer.
+- Save reproducible reports locally under `outputs/`. Anonymize before publication. Never log keys, raw provider responses or private model reasoning.
+- Cloud tests are not automatically authorized. Check the specific request, document selection and possible costs; without authorization, continue only independent local work.
+- Private data, models, virtual environments and test output do not belong in the repository. Original project code is MIT licensed; comply with third-party licenses.

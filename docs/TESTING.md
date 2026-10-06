@@ -1,8 +1,8 @@
-# Tests ausführen
+# Run tests
 
-[Zur Projektseite](../README.md) · [Aktueller Teststand](STATUS.md)
+[Project page](../README.md) · [Current test status](STATUS.md)
 
-## 1. Isolierte Tests ohne KI-Kosten
+## 1. Isolated tests with no AI costs
 
 ```powershell
 python -m pip install -r requirements-dev.txt
@@ -13,9 +13,9 @@ node test_runtime.js
 python package.py --source-only
 ```
 
-Diese Tests nutzen temporäre/synthetische Daten, simulierte Encoder oder Anbieterantworten. Sie prüfen Logik und Fehlerfälle, nicht die tatsächliche Qualität eines Modells. Node.js wird für die Plugin-Tests benötigt. Die Windows-CI führt dieselben Prüfungen aus und lädt keine Modellgewichte. Ein vorab veröffentlichter CI-Erfolg ist damit noch nicht vorhanden.
+These tests use temporary/synthetic data and simulated encoders or provider responses. They test logic and failure cases, not real model quality. Node.js is required for plugin tests. Windows CI runs the same checks and does not download model weights. No CI result has been published in advance.
 
-## XPI-Einrichtung auf einem PC ohne Python im Suchpfad
+## Set up the XPI without Python on `PATH`
 
 ```powershell
 python build_runtime.py
@@ -23,38 +23,38 @@ python package.py
 .\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.27.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
 ```
 
-Die Prüfung richtet die enthaltene Laufzeit in einem separaten Testordner ein, entfernt Python aus dem Suchpfad und verbietet Modell-Downloads. Sie prüft reale Dienstverfügbarkeit, Fortschritt, vollständigen Prozessverlust mit erneutem Start und Erhalt der Testdatenbank. Sie berührt die normale Installation auf Port 8765 nicht und führt keine Cloud-Abfrage aus. Ein tatsächlicher OS-Neustart wird damit nicht ausgeführt.
+The check installs the bundled runtime in a separate test folder, removes Python from `PATH` and blocks model downloads. It checks actual service availability, progress, recovery after complete process loss and preservation of the test database. It does not use the regular installation on port 8765 or make cloud requests. It does not reboot the operating system.
 
-## 2. Echte lokale Modelle mit synthetischen PDFs
+## 2. Real local models with synthetic PDFs
 
-Mit vollständigen Backend-Abhängigkeiten:
+Install the full backend dependencies:
 
 ```powershell
 python -m pip install -r backend\requirements.txt
 python backend\smoke_model_catalog.py intfloat/multilingual-e5-small
 ```
 
-Das Skript erzeugt synthetische PDFs und einen temporären Index. Es prüft echte Modellberechnung, Fundort, Bibliotheksgrenzen, fachfremde Anfrage und erneutes Laden des Index. Fehlende Modellgewichte werden heruntergeladen. `HF_HOME` kann auf einen vorhandenen Cache zeigen; `HF_HUB_OFFLINE=1` verhindert Downloads, falls alle nötigen Gewichte schon vorhanden sind.
+The script creates synthetic PDFs and a temporary index. It checks actual model inference, passage location, library boundaries, an unrelated query and reloading the index. Missing model weights are downloaded. `HF_HOME` can point to an existing cache; set `HF_HUB_OFFLINE=1` to prevent downloads if all required weights are already cached.
 
-Für ein echtes eigenes Embedding-Modell mit synthetischer Datenbank:
+To test a custom embedding model with a synthetic database:
 
 ```powershell
 python backend\smoke_custom_embedding.py --cache .\outputs\model-cache --output .\outputs\custom-model.json
 ```
 
-Dieses Skript verwendet einen festgelegten kleinen Hugging-Face-Testencoder und eine isolierte Datenbank. Es ersetzt nicht den Modellwechsel in einer realen Nutzerbibliothek.
+This script uses a fixed small Hugging Face test encoder and an isolated database. It does not replace a model change against a real user library.
 
-## 3. Echte KI-Suchläufe
+## 3. Live AI search runs
 
-`backend/smoke_ai_search.py` verwendet den **konfigurierten Anbieter** des laufenden Dienstes und kann Dokumenttexte übertragen sowie Kosten verursachen. Nur bewusst ausgewählte Testdokumente verwenden. `--live` ist zwingend.
+`backend/smoke_ai_search.py` uses the **configured provider** of the running service. It may transmit document text and incur costs. Use only deliberately selected test documents. The `--live` flag is required.
 
 ```powershell
 python backend\smoke_ai_search.py --live --library 1 --case dino_teacher --case unrelated --attachment-key YOUR_DINO_KEY --output .\outputs\ai-search.json
 ```
 
-`YOUR_DINO_KEY` durch den Schlüssel deines verarbeiteten DINO-PDF-Anhangs ersetzen. Die Beispielanfragen erwarten passende DINO-/MiVOLO-/Distillations-Papers; sie sind für eine beliebige Bibliothek kein gültiger Positivtest. Für andere Dokumente neue geprüfte Fälle erstellen.
+Replace `YOUR_DINO_KEY` with the attachment key for your processed DINO PDF. The example queries expect relevant DINO/MiVOLO/distillation papers and are not valid positive tests for an arbitrary library. Create new verified cases for other documents.
 
-Für einen UI-Replay des echten Ergebnisses:
+To replay a real result through the UI logic:
 
 ```powershell
 $env:ZITATLOTSE_LIVE_REPORT = '.\outputs\ai-search.json'
@@ -62,45 +62,45 @@ node test_search_session.js
 Remove-Item Env:\ZITATLOTSE_LIVE_REPORT
 ```
 
-Der Bericht kann Originaltexte und Quellenkennungen enthalten. Er ist absichtlich von Git ausgeschlossen und darf nicht ungeprüft veröffentlicht werden. Der Replay verwendet die ausgelieferte UI-Logik in einem simulierten Dokumentbaum, nicht ein echtes Zotero-Fenster.
+The report may contain original text and source identifiers. It is intentionally excluded from Git and must not be published without review. The replay uses the shipped UI logic in a simulated document tree, not a real Zotero window.
 
-## 4. Windows-Kaltstarts und Ausfälle
+## 4. Windows cold starts and failures
 
-Diese Tests **unterbrechen den installierten Zitatlotse-Dienst** und stellen ihn abschließend wieder her. Sie können minutenlang dauern. Keine eigene Verarbeitung parallel laufen lassen.
+These tests **interrupt the installed Zitatlotse service** and restore it afterward. They may take several minutes. Do not run them during your own processing.
 
 ```powershell
 .\smoke_autostart.ps1 -ColdCycles 3 -TestEarlyCrash -Output .\outputs\cold-start.json
 ```
 
-Vollständigen Prozessausfall nach automatischer Aufgaben-Ausführung prüfen:
+Test complete process loss after an automatic scheduled start:
 
 ```powershell
 .\smoke_autostart.ps1 -SupplementaryOnly -TestSchedulerRecovery -TestScheduledTrigger -Output .\outputs\whole-service-failure.json
 ```
 
-**Der aktuelle Stand besteht den automatischen Wiederanlaufteil dieses Tests nicht.** Eine separate einmalige Zeitaufgabe wird für die Prüfung erstellt und anschließend entfernt. Der echte PC wird nicht neu gestartet.
+**The current version does not pass the automatic recovery portion of this test.** A temporary one-time scheduled task is created for the test and removed afterward. The actual PC is not rebooted.
 
-Optionale direkte Suche nach Kaltstart mit den eigenen Test-PDFs:
+Optional direct search after a cold start using your own test PDFs:
 
 ```powershell
 .\smoke_autostart.ps1 -SupplementaryOnly -TestLocalSearch -LibraryId 1 -DinoAttachmentKey YOUR_DINO_KEY -TestAttachmentKeys YOUR_DINO_KEY,YOUR_MIVOLO_KEY,YOUR_DISTILLATION_KEY -Output .\outputs\cold-search.json
 ```
 
-Die Schlüssel beziehen sich auf die **eigenen** indizierten Zotero-Anhänge. Es sind keine persönlichen Schlüssel im Skript hinterlegt. `Average` muss im Testbestand vorkommen; der klinische Negativfall darf dort keine passende Literatur haben.
+The keys refer to **your own** indexed Zotero attachments. No personal keys are stored in the script. `Average` must occur in the test corpus; the unrelated clinical negative case must not match relevant literature there.
 
-## 5. Native Zotero-Prüfung
+## 5. Native Zotero checks
 
-Zusätzlich manuell prüfen:
+Also check manually:
 
-- XPI installieren und Zotero neu starten.
-- Nur ein funktionierendes Symbol rechts; Öffnen/Schließen und kleiner Fensterbereich.
-- Dropdowns für Modus, Sammlung und Modell schließen das Fenster nicht unbeabsichtigt.
-- Verarbeitung einer PDF, eines Eintrags und aller neuen/geänderten PDFs.
-- Direkte, KI- und Pro-/Kontra-Suche im richtigen Bereich.
-- Doppelklick auf eine Originalstelle: passende Seite und Hervorhebung.
-- Zitierstil, Speichern, Notiz, Suchzeile und Kopieren.
-- Schließen/Öffnen erhält den Verlauf; Reset und Zotero-Neustart leeren temporäre Ansichten.
-- Modellwechsel bestätigen, erfolgreiche Aktivierung und Fehlerfall mit altem Index prüfen.
-- Echten Windows-Neustart mit Anmeldung ausführen und Dienstbereitschaft sowie erste Suche getrennt messen.
+- Install the XPI and restart Zotero.
+- Verify that only one working sidebar icon appears; test open/close and a small window.
+- Confirm that mode, collection and model dropdowns do not accidentally close the window.
+- Process one PDF, one item and all new/changed PDFs.
+- Test direct, AI and supporting/opposing searches in the correct scope.
+- Double-click an original passage; verify the page and highlight.
+- Test citation style, save, note, search and copy.
+- Closing/reopening preserves history; reset and restarting Zotero clear temporary views.
+- Confirm a model change, successful activation and error fallback to the previous index.
+- Perform a real Windows reboot and sign-in; measure service readiness separately from the first search.
 
-Diese Liste beschreibt erforderliche Prüfungen, keine pauschale Bestätigung bereits bestandener nativer Tests.
+This checklist describes required checks; it does not claim that all native tests have passed.

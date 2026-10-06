@@ -1,29 +1,29 @@
-# Abhängigkeiten und Modelle
+# Dependencies and models
 
-Die MIT-Lizenz dieses Repositorys gilt für den eigenen Quellcode und die eigenen Dokumentationsgrafiken. Sie ersetzt keine Lizenz einer Abhängigkeit, eines Modells oder eines Dokuments. Die Windows-Release-XPI enthält Python und die benötigten CPU-Bibliotheken samt deren Lizenzdateien. Modellgewichte sind nicht enthalten und werden separat geladen.
+The MIT license in this repository applies to original project code and documentation graphics. It does not replace the license of a dependency, model or document. The Windows release XPI includes Python and the required CPU libraries with their license files. Model weights are not included and are downloaded separately.
 
-## Bibliotheken
+## Libraries
 
-| Projekt | Verwendung | Offizielle Quelle |
+| Project | Use | Official source |
 | --- | --- | --- |
-| Zotero | Bibliotheken, Metadaten, Reader, CSL-Zitierstile und Add-on-Oberfläche | [Zotero](https://www.zotero.org/support/dev/start) |
-| PyMuPDF / MuPDF | PDF-Text, Seiten und Koordinaten | [Lizenz und Copyright](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright) |
-| SentenceTransformers | Lokale dichte Text-Embeddings | [Repository](https://github.com/huggingface/sentence-transformers) |
-| Transformers | Modellarchitekturen und Tokenizer | [Repository](https://github.com/huggingface/transformers) |
-| BERTScore | Nachbewertung der Chunk-Kandidaten | [Repository](https://github.com/Tiiiger/bert_score) |
-| NumPy | Vektoren und Cosinus-Vergleich | [Repository](https://github.com/numpy/numpy) |
-| keyring | Anmeldeinformationsspeicher des Betriebssystems | [Repository](https://github.com/jaraco/keyring) |
+| Zotero | Libraries, metadata, reader, CSL styles and add-on interface | [Zotero](https://www.zotero.org/support/dev/start) |
+| PyMuPDF / MuPDF | PDF text, pages and coordinates | [License and copyright](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright) |
+| SentenceTransformers | Local dense text embeddings | [Repository](https://github.com/huggingface/sentence-transformers) |
+| Transformers | Model architectures and tokenizers | [Repository](https://github.com/huggingface/transformers) |
+| BERTScore | Reranking chunk candidates | [Repository](https://github.com/Tiiiger/bert_score) |
+| NumPy | Vectors and cosine comparison | [Repository](https://github.com/numpy/numpy) |
+| keyring | Operating system credential storage | [Repository](https://github.com/jaraco/keyring) |
 
-**PyMuPDF und MuPDF stehen unter AGPL oder kommerziellen Lizenzbedingungen.** Die freie Distribution verwendet die AGPL-Ausgaben. Deren Lizenztexte liegen in der enthaltenen Laufzeit; der entsprechende unveränderte Quellcode wird zusätzlich als Release-Asset bereitgestellt. Die MIT-Freigabe des eigenen Codes schränkt die Rechte und Pflichten aus der AGPL nicht ein. Die komplette Distribution ist deshalb kein ausschließlich unter MIT stehendes Paket.
+**PyMuPDF and MuPDF are available under AGPL or commercial license terms.** The free distribution uses AGPL builds. Their license texts are in the bundled runtime; the corresponding unmodified source is also provided as a release asset. The MIT license for original project code does not remove AGPL rights or obligations. The complete distribution is therefore not exclusively MIT licensed.
 
-Die exakten Versionen des mitgelieferten Pakets stehen in `PACKAGES.json` innerhalb von `runtime/python.zip`. Die Lizenztexte und Copyright-Hinweise der transitiven Abhängigkeiten bleiben in `Lib/site-packages/*dist-info/licenses` beziehungsweise den jeweiligen `LICENSE`-Dateien erhalten. Der Quellcode-Build referenziert `backend/requirements.txt`; neue Laufzeit-Builds separat prüfen.
+Exact versions of bundled packages are listed in `PACKAGES.json` inside `runtime/python.zip`. License texts and copyright notices for transitive dependencies remain in `Lib/site-packages/*dist-info/licenses` or the relevant `LICENSE` files. The source build references `backend/requirements.txt`; review future runtime builds separately.
 
-## Modelle
+## Models
 
-Die integrierten Profile referenzieren Modelle der jeweiligen Herausgeber auf Hugging Face. Der voreingestellte Encoder ist `intfloat/multilingual-e5-small`; für BERTScore wird standardmäßig `bert-base-multilingual-cased` verwendet. Die vollständige Profilliste steht in [Funktionen](docs/FEATURES.md).
+Built-in profiles refer to models hosted by their respective publishers on Hugging Face. The default encoder is `intfloat/multilingual-e5-small`; the default BERTScore model is `bert-base-multilingual-cased`. See the [feature catalog](docs/FEATURES.md) for the complete profile list.
 
-Hugging-Face-Modellkarten enthalten die jeweiligen Lizenzen und Nutzungsvoraussetzungen. Auch bei eigenen Modellkennungen gelten diese Bedingungen. Zitatlotse übernimmt keine Modellgewichte ins Repository und re-lizenziert sie nicht.
+Hugging Face model cards describe each model's license and terms of use. Those terms also apply to custom model IDs. Zitatlotse does not include model weights in the repository or relicense them.
 
-## Marken und Anbieter
+## Trademarks and providers
 
-Zotero, Hugging Face, OpenAI, Anthropic, DeepSeek und Ollama werden zur Beschreibung der Integration genannt. Zitatlotse wird von diesen Projekten nicht als offizielles Produkt angeboten. Cloud-APIs unterliegen den Bedingungen und Preisen des gewählten Anbieters.
+Zotero, Hugging Face, OpenAI, Anthropic, DeepSeek and Ollama are named to describe integrations. These projects do not offer Zitatlotse as an official product. Cloud APIs are subject to the selected provider's terms and prices.

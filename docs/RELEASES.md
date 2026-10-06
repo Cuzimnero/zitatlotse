@@ -1,24 +1,24 @@
-# Release-Downloads
+# Release downloads
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-Das öffentliche Repository und erste Release sind derzeit **noch nicht veröffentlicht**. Die lokale Vorschau kann vorab geprüft werden.
+The public repository and first release have **not been published yet**. Review the local preview before publication.
 
-## Geplante Dateien pro Release
+## Planned files for each release
 
-| Datei | Inhalt |
+| File | Contents |
 | --- | --- |
-| `Zitatlotse-0.27.0.xpi` | Installierbares Zotero-Add-on einschließlich Windows-x64-Python-Laufzeit, CPU-Bibliotheken und Backend. |
-| `Zitatlotse-0.27.0-source.zip` | Bereinigter eigener Quellcode, Tests und Dokumentation. |
-| `third-party-sources.zip` | Entsprechender unveränderter Quellcode der mitgelieferten AGPL-PDF-Bibliothek. |
-| `SHA256SUMS.txt` | SHA-256-Prüfsummen der Downloads. |
+| `Zitatlotse-0.27.0.xpi` | Installable Zotero add-on with the Windows x64 Python runtime, CPU libraries and backend. |
+| `Zitatlotse-0.27.0-source.zip` | Cleaned project source, tests and documentation. |
+| `third-party-sources.zip` | Corresponding unmodified source for the bundled AGPL PDF library. |
+| `SHA256SUMS.txt` | SHA-256 checksums for the downloads. |
 
-Zur normalen Nutzung genügt die **XPI**. Quellcode-Archive sind für Entwicklung, Nachvollziehbarkeit und Lizenzrechte vorhanden.
+For normal use, you only need the **XPI**. Source archives are provided for development, review and license compliance.
 
-Nach Freigabe ist die XPI auch direkt über diesen Asset-Pfad abrufbar: [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi). Die übrigen Dateien und Prüfsummen liegen auf derselben Release-Seite.
+After publication, the XPI will also be available directly at this asset URL: [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi). The other files and checksums will be attached to the same release.
 
-## Veröffentlichung
+## Publishing
 
-Der manuell auslösbare Workflow **Build a draft release** baut und prüft das vollständige Paket. Er erstellt ausschließlich einen unveröffentlichten Vorab-Release-Entwurf. Die Dateien werden als Assets angehängt; die XPI ist nach Veröffentlichung direkt über den Release-Bereich downloadbar. Ein gewöhnlicher Push veröffentlicht kein Release.
+The manually triggered **Build a draft release** workflow builds and tests the complete package. It creates an unpublished release draft only. The files are attached as assets; the XPI can be downloaded directly after the release is published. A regular push does not publish a release.
 
-Der angegebene Tag muss mit `plugin/manifest.json` übereinstimmen. Ein schon vorhandener Release wird nicht überschrieben. [Release-Text für 0.27.0](releases/v0.27.0.md)
+The requested tag must match `plugin/manifest.json`. An existing release is not overwritten. See the [release notes for 0.27.0](releases/v0.27.0.md).

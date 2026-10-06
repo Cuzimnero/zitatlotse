@@ -1,174 +1,174 @@
-# Die einzelnen Abläufe
+# User workflows
 
-[Zur Projektseite](../README.md) · [Technische Architektur](ARCHITECTURE.md)
+[Project page](../README.md) · [Technical architecture](ARCHITECTURE.md)
 
-## Installation und Neustart
+## Install and restart
 
 ```mermaid
 flowchart LR
-    A[XPI in Zotero installieren] --> B[Add-on wird geladen]
-    B --> C{Passende Laufzeit vorhanden?}
-    C -->|Nein| D[Paket prüfen und lokal entpacken]
-    D --> E[Backend aktualisieren / Daten erhalten]
-    C -->|Ja| F[Python und Launcher starten]
+    A[Install XPI in Zotero] --> B[Add-on loads]
+    B --> C{Is a compatible runtime present?}
+    C -->|No| D[Verify package and extract locally]
+    D --> E[Update backend / preserve data]
+    C -->|Yes| F[Start Python and launcher]
     E --> F
-    F --> G[Health-Check und Fortschritt]
-    G --> H[Lokale Suche bereit]
-    H --> I[Modelle bei erster Verwendung laden]
+    F --> G[Health check and progress]
+    G --> H[Local search ready]
+    H --> I[Load models on first use]
 ```
 
-Der Nutzer startet kein separates Programm. Nach einem PC-Neustart startet Zotero seinen Dienst erneut. Während Zotero geöffnet ist, prüft die Erweiterung alle 30 Sekunden den Dienst. Fehler bei der Einrichtung erscheinen im Suchfenster und können über **Suchdienst prüfen** erneut versucht werden.
+The user does not start a separate program. After a PC restart, Zotero starts the service again. While Zotero is open, the add-on checks the service every 30 seconds. Setup errors appear in the search window and can be retried with **Check search service**.
 
-## 1. Neue PDF oder Bibliothek verarbeiten
+## 1. Process a new PDF or library
 
 ```mermaid
 flowchart LR
-    A[PDF / Eintrag / Bibliothek wählen] --> B[Lokale PDFs ermitteln]
-    B --> C[Neue oder geänderte Dateien erkennen]
-    C --> D[Text pro Seite extrahieren]
-    D --> E[Chunks und Sprache bestimmen]
-    E --> F[Embeddings und Themenmerkmale berechnen]
-    F --> G[(SQLite aktualisieren)]
-    B --> H[Fehlende Dateien melden]
+    A[Choose PDF / item / library] --> B[Find local PDFs]
+    B --> C[Detect new or changed files]
+    C --> D[Extract text page by page]
+    D --> E[Create chunks and determine language]
+    E --> F[Calculate embeddings and topic features]
+    F --> G[(Update SQLite)]
+    B --> H[Report missing files]
 ```
 
-**Eingabe:** ausgewählte Zotero-Bibliothek sowie PDF, Literatur-Eintrag oder Bibliotheksscan. **Ausgabe:** lokale Chunks, Vektoren, Metadaten und Fortschrittsbericht.
+**Input:** a Zotero library and a PDF, library item or library scan. **Output:** local chunks, vectors, metadata and a progress report.
 
-Bei einem Eintrag werden seine PDF-Anhänge verarbeitet. Bei einem Bibliotheksscan werden nur nicht aktuelle Anhänge neu indiziert. Neue PDF-Anhänge können über den Zotero-Notifier automatisch eingereiht werden. Nicht lokal verfügbare oder nicht auslesbare Dateien liefern einen Hinweis. Scans ohne Text brauchen vorher OCR.
+For a library item, process its PDF attachments. A library scan reindexes only outdated attachments. The Zotero notifier can automatically queue new PDF attachments. Report files that are not available locally or cannot be read. Scanned PDFs with no text need OCR first.
 
-## 2. Direkt suchen
+## 2. Run a direct search
 
-**Eingabe:** Suchtext und Bibliotheks-/Sammlungsbereich.
+**Input:** query text and a library/collection scope.
 
-1. Bereich validieren. Ist die gewählte Sammlung leer, mit leeren Ergebnissen abschließen.
-2. Query mit dem aktiven lokalen Encoder berechnen.
-3. Nur extrem unwahrscheinliche Dokumente grob ausschließen.
-4. Alle verbliebenen Chunks mit Cosinus vergleichen.
-5. Ähnliche Kandidaten mit BERTScore nachbewerten.
-6. Wörtliche Sonderfälle und Relevanzregeln anwenden, Überschneidungen bereinigen.
-7. Zitate mit Paper und PDF-Seite paginiert anzeigen.
+1. Validate the scope. If the selected collection is empty, return no results.
+2. Encode the query with the active local encoder.
+3. Coarsely exclude only extremely unlikely documents.
+4. Compare all remaining chunks using cosine similarity.
+5. Rerank similar candidates with BERTScore.
+6. Apply literal-query and relevance rules, then deduplicate overlaps.
+7. Show paginated quotations with paper title and PDF page.
 
-**Ausgabe:** Originalstellen oder ein leeres Ergebnis. Es erfolgt kein KI-Anbieteraufruf. Beim Schließen bleiben Eingabe und Ergebnisse in der aktuellen Zotero-Sitzung erhalten.
+**Output:** original passages or an empty result. No AI provider is called. When the window closes, keep the query and results in the current Zotero session.
 
-## 3. Einstufige KI-Suche
+## 3. Run a one-step AI search
 
 ```mermaid
 sequenceDiagram
-    participant U as Nutzer in Zotero
-    participant S as Lokaler Dienst
-    participant M as Gewähltes Modell
-    U->>S: Frage + fester Suchbereich
-    S->>S: Dokumentsprachen bestimmen
-    S->>M: Suchvarianten formulieren
-    M-->>S: Query je Dokumentsprache
-    S->>S: Varianten und Originalfrage lokal suchen
-    S->>M: Abgerufene Originalstellen auswerten
-    M-->>S: Kurze Antwort + Quellenreferenzen
-    S->>S: Referenzen und Belege prüfen
-    S-->>U: Antwort und ausgewählte Zitate
+    participant U as User in Zotero
+    participant S as Local service
+    participant M as Selected model
+    U->>S: Question + fixed search scope
+    S->>S: Determine document languages
+    S->>M: Formulate search variants
+    M-->>S: Query for each document language
+    S->>S: Search variants and original question locally
+    S->>M: Review retrieved original passages
+    M-->>S: Short answer + source references
+    S->>S: Validate references and evidence
+    S-->>U: Answer and selected quotations
 ```
 
-**Eingabe:** natürliche Frage. **Ausgabe:** kurze Antwort und Quellenliste. Eine deutsche Frage kann damit englische Suchformulierungen für englische PDFs erhalten.
+**Input:** a natural-language question. **Output:** a short answer and a source list. A German question can be turned into English search queries for English PDFs.
 
-Die Originalfrage bleibt als Suchvariante erhalten. Die KI erhält eine begrenzte Auswahl der abgerufenen Stellen, kein vollständiges automatisches Lesen der gesamten Bibliothek. Wenn sie keine ausreichenden Belege erkennt, bleiben keine Zitate als ausgewählt stehen. Bei einem Anbieterfehler wird ein Hinweis gezeigt und gegebenenfalls die strengere lokale Suche verwendet.
+Keep the original question as a search variant. The AI receives a limited set of retrieved passages, not an automatic full reading of the library. If it finds insufficient evidence, no quotations remain selected. If a provider fails, show a notice and use stricter local search where possible.
 
-## 4. Mehrstufige KI-Suche
+## 4. Run a multi-step AI search
 
 ```mermaid
 flowchart TD
-    A[Frage und Bereich] --> B[Modell mit Werkzeugen aufrufen]
-    B --> C{Modellantwort}
-    C -->|search_library| D[Query lokal im festen Bereich suchen]
-    D --> E[Originalstellen an Modell zurückgeben]
-    E --> F{Suchschritte / Zeit verfügbar?}
-    F -->|Ja| B
-    F -->|Nein| G[Mit vorhandenen Belegen abschließen]
+    A[Question and scope] --> B[Call model with tools]
+    B --> C{Model response}
+    C -->|search_library| D[Search query locally within fixed scope]
+    D --> E[Return original passages to model]
+    E --> F{More steps / time available?}
+    F -->|Yes| B
+    F -->|No| G[Finish with current evidence]
     C -->|finish_search| G
-    C -->|Keine gültigen Tools| H[Einstufiger Rückfall mit Hinweis]
-    G --> I[Quellen prüfen und Zitate anzeigen]
+    C -->|No valid tools| H[One-step fallback with notice]
+    G --> I[Validate sources and show quotations]
 ```
 
-Das Modell entscheidet, ob es eine zusätzliche Formulierung braucht. Der Dienst kontrolliert Suchbereich, Schrittzahl und Quellenkennungen. Wiederholte identische Abfragen innerhalb der Frage werden wiederverwendet. Die Aktivitätsanzeige kann die tatsächlichen Ereignisse sichtbar machen.
+The model decides whether it needs another query. The service controls the scope, step count and source IDs. Identical repeated queries within one question are reused. The activity view can show the actual events.
 
-**Abbruch:** Reset oder Wechsel des Bereichs beendet die aktive UI-Anfrage; verspätete Ergebnisse werden verworfen. Das Zeitbudget kann eine schon laufende lokale Rechenphase nicht in jeder Situation sofort unterbrechen.
+**Cancellation:** resetting or changing the scope ends the active UI request; late results are discarded. A time budget cannot always immediately interrupt a local computation already in progress.
 
-## 5. Eine Aussage mit Pro und Kontra prüfen
+## 5. Check a claim using supporting and opposing evidence
 
-**Eingabe:** eine konkrete Aussage, beispielsweise „Kleinere Bild-Patches verbessern die Repräsentationsqualität ohne zusätzlichen Rechenaufwand.“ Dieses Beispiel ist eine Eingabeillustration, keine vorab garantierte Testfrage.
+**Input:** a concrete claim, for example, “Smaller image patches improve representation quality without additional compute.” This is an example input, not a guaranteed test question.
 
-1. Unterstützende, widersprechende und relevante Teilaspekte der Aussage suchen.
-2. Bei aktivierter und unterstützter mehrstufiger Suche zusätzliche Queries zulassen.
-3. Alle im Ablauf abgerufenen Kandidaten in begrenzten Gruppen bewerten lassen.
-4. Quellenreferenzen prüfen; Pro, Kontra und neutral/unklar zuordnen.
-5. Befund, Begründung und Originalzitate mit Paper-Verweisen anzeigen.
-6. Pro-/Kontra-Anteile berechnen: `Pro / (Pro + Kontra)` und `Kontra / (Pro + Kontra)`. Neutrale Stellen separat anzeigen.
+1. Search for supporting, opposing and relevant aspects of the claim.
+2. Allow additional queries if multi-step search is enabled and supported.
+3. Have the model assess candidates retrieved during the flow in limited groups.
+4. Validate source references; classify evidence as supporting, opposing or neutral/unclear.
+5. Show findings, reasons and original quotations with paper references.
+6. Calculate the supporting/opposing shares as `supporting / (supporting + opposing)` and `opposing / (supporting + opposing)`. Show neutral passages separately.
 
-**Ausgabe:** eine Gegenüberstellung der gefundenen Stellen. Ohne ausreichende gerichtete Belege gibt es keine aussagekräftige Rot-Grün-Bilanz. Die Suche kann Belege übersehen und bewertet keine Studienqualität.
+**Output:** a comparison of retrieved passages. Without enough directional evidence, the red/green balance is not meaningful. Search can miss evidence and does not assess study quality.
 
-## 6. Dokumentgrafik zur aktuellen Frage
+## 6. View the document chart for the current question
 
-1. Aktuelle Frage und vorhandene sprachbezogene Queries übernehmen.
-2. Alle Chunks der verarbeiteten Dokumente im selben Bereich vergleichen.
-3. Je Dokument den höchsten Cosinus-Wert wählen.
-4. Identischen indizierten Inhalt zusammenfassen.
-5. Die beobachtete Spanne in relative Gruppen einteilen.
-6. Ringdiagramm, Dokumentanzahl und Liste mit bester PDF-Seite anzeigen.
+1. Use the current question and available language-specific queries.
+2. Compare all chunks of processed documents in the same scope.
+3. Select the highest cosine score for each document.
+4. Group identical indexed content.
+5. Divide the observed score range into relative groups.
+6. Show the ring chart, document count and a list with the best PDF page.
 
-**Ausgabe:** eine Orientierung, welche Dokumente zur Frage ähnliche Stellen enthalten könnten. Die Gruppenprozentzahl beschreibt den Bibliotheksanteil innerhalb des verarbeiteten Suchbereichs. Sie beschreibt weder den individuellen Ähnlichkeitswert noch die Wahrscheinlichkeit einer passenden Antwort.
+**Output:** an overview of which documents may contain passages similar to the question. Group percentages represent the share of documents within the processed search scope. They are not individual similarity values or the probability of a matching answer.
 
-## 7. Zitat im PDF öffnen
+## 7. Open a quotation in the PDF
 
-**Auslöser:** Doppelklick auf den Zitattext oder **Im PDF öffnen**.
+**Trigger:** double-click the quotation text or choose **Open in PDF**.
 
-Der Plugin-Code ermittelt den Zotero-Anhang, öffnet dessen Reader, wartet auf Initialisierung und übergibt Seite und Textposition. Kann eine passende Position erkannt werden, wird sie vorübergehend hervorgehoben. Andernfalls wird die betreffende PDF-Seite geöffnet. Das erzeugt keine gespeicherte Zotero-Annotation.
+The plugin finds the Zotero attachment, opens its reader, waits for initialization and passes the page and text position. If it can resolve a matching position, it highlights it temporarily. Otherwise it opens the relevant PDF page. This does not create a saved Zotero annotation.
 
-## 8. Zitat speichern, notieren und kopieren
+## 8. Save, annotate and copy a quotation
 
-1. **Zitat speichern** wählen; Originalstelle, Literaturangaben und Seite werden lokal gespeichert.
-2. Unter **Gespeicherte Zitate** die Bibliothek auswählen und Suchzeile verwenden.
-3. Eine Notiz hinzufügen oder bearbeiten.
-4. Zitat erneut im PDF öffnen oder im gewählten Zotero-Zitierstil kopieren.
-5. Bei Bedarf das gespeicherte Zitat entfernen.
+1. Choose **Save quotation**; store the original passage, citation metadata and page locally.
+2. Under **Saved quotations**, select a library and use the search box.
+3. Add or edit a note.
+4. Reopen the quotation in the PDF or copy it in the selected Zotero citation style.
+5. Remove the saved quotation if needed.
 
-Gespeicherte Zitate überleben Reset, Schließen und Zotero-Neustart. Der Kopiertext besteht aus Originaltext und formatiertem Kurzbeleg mit PDF-Seitenlocator.
+Saved quotations survive reset, closing the window and restarting Zotero. The copied text combines the original passage with a formatted citation and PDF page locator.
 
-## 9. Embedding-Modell wechseln
+## 9. Change the embedding model
 
 ```mermaid
 flowchart TD
-    A[Profil / eigenes Hugging-Face-Modell wählen] --> B[Kompatibilität und Eingabeprofil prüfen]
-    B --> C{Neuaufbau bestätigen?}
-    C -->|Nein| D[Bisheriges Modell behalten]
-    C -->|Ja| E[Neues Modell laden]
-    E --> F[Alle Chunk- und Themenvektoren neu berechnen]
-    F --> G{Erfolgreich?}
-    G -->|Ja| H[Neuen Index atomar aktivieren]
-    G -->|Nein| I[Fehler zeigen / bisherigen Index erhalten]
+    A[Choose a profile or custom Hugging Face model] --> B[Check compatibility and input format]
+    B --> C{Confirm index rebuild?}
+    C -->|No| D[Keep current model]
+    C -->|Yes| E[Load new model]
+    E --> F[Recalculate all chunk and topic vectors]
+    F --> G{Successful?}
+    G -->|Yes| H[Activate new index atomically]
+    G -->|No| I[Show error / keep previous index]
 ```
 
-Der Neuaufbau betrifft **alle gespeicherten Bibliotheken**. Gespeicherte Zitate und Notizen bleiben bestehen. Modellgewichte und neue Vektoren benötigen zusätzlichen Platz. Ein Encoder muss zum Query-Format und zu den Dokumentsprachen passen; bloßes Übersetzen einer Query behebt nicht jedes ungeeignete Modell.
+The rebuild affects **all indexed libraries**. Saved quotations and notes remain. Model weights and new vectors require additional disk space. An encoder must fit the query format and document languages; translating a query does not make every unsuitable model work.
 
-## 10. KI-Verbindung und Modellliste
+## 10. Configure an AI connection and model list
 
-1. Anbieter auswählen.
-2. Bei Cloud-Anbietern Schlüssel eingeben; bei Ollama lokalen Server verwenden.
-3. Modellliste aktualisieren und Modell wählen oder Kennung manuell eintragen.
-4. Verbindung speichern; Schlüssel geht in den OS-Anmeldeinformationsspeicher.
-5. Verbindung testen. Cloud-Tests können API-Kosten verursachen.
-6. Mehrstufige Suche und Aktivitätsanzeige separat in den Einstellungen wählen.
+1. Select a provider.
+2. Enter a key for a cloud provider, or use a local server for Ollama.
+3. Refresh the model list and select a model, or enter its identifier manually.
+4. Save the connection; store the key in the operating system's credential store.
+5. Test the connection. Cloud tests may incur API charges.
+6. Configure multi-step search and the activity view separately in settings.
 
-Ein Katalogeintrag beweist nicht die Tool-Unterstützung. Scheitert die mehrstufige Verwendung, wird dies angezeigt und ein Rückfall versucht.
+A model appearing in a catalog does not prove it supports tool calls. If multi-step search fails, report that and attempt a fallback.
 
-## 11. Fenster schließen, erneut öffnen und zurücksetzen
+## 11. Close, reopen and reset the window
 
-- **Schließen:** Chat, direkte Suche, Entwürfe und bereits angezeigte Ergebnisse pro Bibliothek erhalten.
-- **Erneut öffnen:** diesen Sitzungszustand wiederherstellen.
-- **Reset:** nur die betreffende Ansicht der aktuellen Bibliothek leeren und alte Antworten verwerfen.
-- **Zotero neu starten:** temporäre Chat- und Direktansichten aller Bibliotheken leeren.
-- **Gespeicherte Zitate:** in allen Fällen dauerhaft in der lokalen Datenbank erhalten.
+- **Close:** keep chat, direct search, drafts and displayed results for each library.
+- **Reopen:** restore that session state.
+- **Reset:** clear only the current library's relevant view and discard old responses.
+- **Restart Zotero:** clear temporary chat and direct-search views for all libraries.
+- **Saved quotations:** remain in the local database in every case.
 
-## 12. Windows-Start und Dienstfehler
+## 12. Windows startup and service failures
 
-Nach Anmeldung soll die Windows-Aufgabe den Launcher starten. Öffnen des Zotero-Menüs kann ihn bei fehlendem Dienst ebenfalls direkt starten. Der Launcher nimmt eine Betriebssystem-Sperre und überwacht den Worker. Ein Worker-Absturz löst einen erneuten Start aus.
+After sign-in, the Windows task is expected to start the launcher. Opening the Zotero menu can also start it directly if the service is unavailable. The launcher uses an operating-system lock and monitors the worker. A worker crash triggers another launch.
 
-**Offener Fehlerfall:** Gehen Supervisor und Worker vollständig verloren, wurde durch Windows in den letzten Tests kein automatischer Wiederanlauf innerhalb von 100 Sekunden beobachtet. Den Dienst über das Menü oder das Startskript erneut starten. Ein zusätzlicher unabhängiger Wiederanlaufmechanismus ist noch zu implementieren und zu testen.
+**Open failure case:** in recent tests, Windows did not automatically recover within 100 seconds after both the supervisor and worker were lost. Restart the service through the menu or startup script. An additional independent recovery mechanism still needs to be implemented and tested.

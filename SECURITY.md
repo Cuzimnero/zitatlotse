@@ -1,9 +1,9 @@
-# Sicherheitshinweise
+# Security policy
 
-Dieses Projekt ist ein experimenteller Prototyp. Es gibt derzeit kein separates privates Meldepostfach und keinen zugesagten Security-Support-Zeitraum.
+This project is an experimental prototype. It has no separate private reporting mailbox and offers no guaranteed security-support period.
 
-Für eine mögliche Schwachstelle zunächst ein Issue mit einer **allgemeinen Beschreibung ohne Geheimnisse, privaten Dokumenttext oder ausnutzbare Details** eröffnen und um einen privaten Meldeweg bitten. API-Schlüssel, Datenbanken und unbereinigte Protokolle niemals öffentlich einstellen.
+For a possible vulnerability, first open an issue with a **general description that contains no secrets, private document text or exploitable details**, and ask for a private reporting channel. Never post API keys, databases or unredacted logs publicly.
 
-Der lokale Dienst ist für `127.0.0.1` vorgesehen. Der Client-Header ist keine geheime Authentifizierung. Nicht per Portfreigabe, Reverse Proxy oder LAN-Bindung öffentlich verfügbar machen.
+The local service is intended for `127.0.0.1`. Its client header is not secret authentication. Do not expose the service through port forwarding, a reverse proxy or a LAN binding.
 
-Eigene Hugging-Face-Modelle müssen mit dem unterstützten lokalen Encoder kompatibel sein. Das Projekt aktiviert keinen fremden Modellcode über `trust_remote_code`. Für Dokumente und Cloud-Anbieter gelten die Angaben in [DATA.md](docs/DATA.md).
+Custom Hugging Face models must be compatible with the supported local encoder. The project does not enable third-party model code through `trust_remote_code`. See [data and privacy](docs/DATA.md) for document and cloud provider handling.

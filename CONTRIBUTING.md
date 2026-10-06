@@ -1,8 +1,8 @@
-# Mitwirken
+# Contributing
 
-Danke für reproduzierbare Fehlerberichte und nachvollziehbare Verbesserungen. Das Projekt befindet sich im Prototypstadium.
+Thank you for reproducible bug reports and well-documented improvements. This project is an experimental prototype.
 
-## Lokaler Einstieg
+## Get started locally
 
 ```powershell
 python -m venv .venv
@@ -13,25 +13,25 @@ node test_search_session.js
 python package.py
 ```
 
-Für tatsächliche Modellberechnung `backend/requirements.txt` verwenden. Für Zotero den Windows-Installer ausführen. [Testanleitung](docs/TESTING.md)
+For actual model inference, use `backend/requirements.txt`. For Zotero, run the Windows installer. See the [testing guide](docs/TESTING.md).
 
-## Suchänderungen prüfen
+## Verify search changes
 
-Vor und nach einer Änderung denselben Fragenbestand verwenden. Positive Fälle, ein klar fachfremder Negativfall, andere Bibliothek und leere Sammlung müssen enthalten sein. KI-Änderungen auch mit einem echten genehmigten Anbieterablauf einschließlich Auswahl und Anzeige prüfen. Reine Mock-Tests beweisen keine Retrieval-Qualität.
+Use the same query set before and after a change. Include positive cases, a clearly unrelated negative case, another library and an empty collection. For AI changes, also test an authorized real provider flow, including result selection and display. Mock-only tests do not prove retrieval quality.
 
-Frage, Modus, Suchbereich, Modelle, Trefferzahl, ausgewählte Quellen, Laufzeit, Warnungen und Erfolg dokumentieren. Private Ergebnisse unter `outputs/` speichern und vor einer öffentlichen Zusammenfassung bereinigen. Keine Schlüssel, Rohantworten oder privaten Modellgedanken veröffentlichen.
+Record the query, mode, search scope, models, hit count, selected sources, runtime, warnings and outcome. Store private results under `outputs/` and sanitize them before public summaries. Do not publish keys, raw responses or private model reasoning.
 
-Cloud-Läufe benötigen eine bewusste Entscheidung des ausführenden Nutzers für die konkreten Dokumente und möglichen Kosten. Bestehende Tests oder Autorisierung eines anderen Nutzers sind keine allgemeine Zustimmung zur Datenübertragung.
+Cloud runs require an informed decision by the user running them for the specific documents and potential costs. Existing tests or another user's authorization are not general consent to transfer data.
 
-## Änderungen einreichen
+## Submit changes
 
-- Kleine, verständliche Änderungen mit Anlass und Testnachweis einreichen.
-- Datenbank-/Modelländerungen müssen vorhandene Zitate und Notizen erhalten oder eine ausdrückliche Migration anbieten.
-- Bibliotheks- und Sammlungsgrenzen in allen Suchwegen wahren.
-- Zusätzliche UI-Beschriftungen in Deutsch und Englisch ergänzen.
-- Fehlerberichte mit Zotero-/Windows-/Addon-Version, reproduzierbaren Schritten und bereinigten Fehlermeldungen erstellen.
-- Keine privaten PDFs, Indexdateien, Credentials oder Modellgewichte einchecken.
+- Keep changes small and explain the reason and test evidence.
+- Database/model changes must preserve existing quotations and notes or provide an explicit migration.
+- Preserve library and collection boundaries in every search path.
+- Add new UI labels in both German and English.
+- Include the Zotero/Windows/add-on versions, reproducible steps and sanitized error messages in bug reports.
+- Do not commit private PDFs, index files, credentials or model weights.
 
-## Sicherheit
+## Security
 
-Für mögliche Credential-Leaks oder unerlaubte Datenübertragung siehe [SECURITY.md](SECURITY.md). Gewöhnliche Bugs können als Issue gemeldet werden. Dieses Projekt bietet derzeit keine garantierte Reaktionszeit.
+For possible credential leaks or unauthorized data transfer, see [SECURITY.md](SECURITY.md). Ordinary bugs can be reported as issues. This project currently offers no guaranteed response time.

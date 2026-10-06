@@ -1,86 +1,86 @@
-# Teststand und bekannte Grenzen
+# Test status and known limitations
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-**Stand: 6. Oktober 2026 · Version 0.27.0 · experimenteller Prototyp**
+**As of 6 October 2026 · Version 0.27.0 · Experimental prototype**
 
-## Neue normale XPI-Installation
+## New standard XPI installation
 
-- Offizielle eingebettete Python-3.13.16-Laufzeit, CPU-PyTorch und Backend vollständig in der XPI.
-- Reale Einrichtung aus dem XPI-Archiv in einem separaten Testordner, mit Python aus dem Suchpfad entfernt und Modell-Downloads deaktiviert: erfolgreich.
-- Health-Check des tatsächlich gestarteten Dienstes, leere Bibliothek und Fortschrittsabschluss: erfolgreich.
-- Vollständiger Verlust von Supervisor und Worker, erneuter Start aus demselben Paket, Datenbank und zusätzliche Testdatei erhalten: erfolgreich.
-- Simulierter Zotero-Start: Erstinstallation, gecachte Laufzeit, ältere Dienstversion, parallele Anfragen, Fehler mit erneutem Versuch und fremder Prozess auf dem Port: erfolgreich.
-- 104 Backend-Tests unter der neu enthaltenen Python-Laufzeit: erfolgreich; Plugin- und Sitzungsprüfungen ebenfalls erfolgreich.
-- Echte E5-/BERTScore-Prüfung mit einem synthetischen PDF: Verarbeitung, positiver Treffer, Fundort und Bibliotheksgrenze liefen erfolgreich. Ein fachfremder Negativfall liefert dabei einen Treffer. Derselbe Fehler tritt auch mit der bisherigen Laufzeit auf; die neue Installation behebt diese vorhandene Relevanzschwäche nicht. Die vollständige Modell-Smoke-Prüfung gilt damit als fehlgeschlagen.
+- Official embedded Python 3.13.16 runtime, CPU PyTorch and backend are bundled in the XPI.
+- Successfully set up the real runtime from the XPI archive in an isolated test folder, with Python removed from `PATH` and model downloads disabled.
+- Health check of the actual service, empty library and progress completion: successful.
+- Complete loss of supervisor and worker followed by restart from the same package; the database and an additional test file were preserved: successful.
+- Simulated Zotero startup: first install, cached runtime, older service version, concurrent requests, setup failure and retry, and a foreign process on the port: successful.
+- 104 backend tests on the newly bundled Python runtime: successful; plugin and session checks also passed.
+- Real E5/BERTScore check with a synthetic PDF: processing, positive hit, location and library boundary worked. An unrelated negative query still returns a hit. The same issue occurs with the previous runtime; the new installer does not fix this existing relevance weakness. The complete model smoke test is therefore considered failed.
 
-Zotero übernimmt Start und Einrichtung und prüft den Dienst alle 30 Sekunden. Eine separate Python-Installation, ein manuell gestarteter Dienst oder eine Windows-Aufgabe gehören nicht zum neuen Standardweg.
+Zotero handles setup and startup and checks the service every 30 seconds. The standard path does not need a separate Python installation, manually launched service or Windows task.
 
-Ein tatsächlicher PC-Neustart und die vollständige Erstinstallation über den nativen Zotero-Add-on-Manager sind durch diese isolierten Tests noch nicht bestätigt. Die folgenden Startmessungen betreffen den vorherigen Stand 0.26.3.
+An actual PC reboot and complete first installation through Zotero's native add-on manager have not yet been confirmed by these isolated tests. The startup measurements below relate to the previous 0.26.3 version.
 
-## Was geprüft wurde
+## What was tested
 
-| Prüfung | Beobachtung |
+| Check | Observation |
 | --- | --- |
-| Isolierte Backend-Tests | 104 Tests für Suche, Bereich, Modelle, Anbieterantworten, Belegbilanz, Jobs, Dokumentgrafik, Speicherung und Launcher. |
-| Plugin-Tests | Verarbeitung, Locale, Reader-Aufrufe, Bibliotheken/Sammlungen, Modellwahl und Startfunktion in einer simulierten Zotero-Umgebung. |
-| Sitzungs-/Anzeige-Tests | Chat, Reset, Filter, Pagination, Dokumentgrafik und Wiederöffnen in einem simulierten Dokumentbaum. |
-| Echte lokale Suchpipeline | Modell- und PDF-Smoke-Tests sowie direkte Suchanfragen mit vorhandenem Index. |
-| Frühere echte KI-Läufe | Positive DINO-/Distillationsfragen und fachfremder Negativfall mit dem konfigurierten Anbieter geprüft; tatsächliche Resultate in der UI-Logik wiedergegeben. Keine automatische cloudbasierte CI. |
+| Isolated backend tests | 104 tests for search, scope, models, provider responses, evidence tally, jobs, document chart, storage and launcher. |
+| Plugin tests | Processing, locale, reader calls, libraries/collections, model selection and startup function in a simulated Zotero environment. |
+| Session/display tests | Chat, reset, filters, pagination, document chart and reopen in a simulated document tree. |
+| Real local search pipeline | Model and PDF smoke tests plus direct queries against an existing index. |
+| Earlier live AI runs | Positive DINO/distillation questions and an unrelated negative case tested with the configured provider; actual results replayed through UI logic. No automated cloud-based CI. |
 
-Die isolierten Tests verwenden teilweise simulierte Vektoren und Anbieterantworten. Sie messen keine reale Retrieval-Qualität. Die simulierte Zotero-Umgebung ersetzt keine manuelle Prüfung im nativen Client. Die vorbereitete GitHub-Actions-Datei ist vor Veröffentlichung noch nicht auf GitHub ausgeführt worden.
+Some isolated tests use simulated vectors and provider responses. They do not measure real retrieval quality. The simulated Zotero environment does not replace manual checks in the native client. The prepared GitHub Actions workflow has not yet run on GitHub.
 
-## Frühere Windows-Kaltstart- und Ausfallprüfung (0.26.3)
+## Earlier Windows cold-start and failure tests (0.26.3)
 
-Die Tests beendeten nur die installierten Zitatlotse-Prozesse, starteten die Windows-Aufgabe oder die ausgelieferte Menü-Startfunktion und prüften tatsächliche HTTP-Verfügbarkeit.
+The tests stopped only the installed Zitatlotse processes, started the Windows task or the shipped menu-start function and checked actual HTTP availability.
 
-| Fall | Letzte Beobachtung |
+| Case | Last observation |
 | --- | --- |
-| Drei zusätzliche vollständige Kaltstarts | 3/3 erfolgreich; etwa 2,87–2,90 Sekunden bis HTTP-Verfügbarkeit. |
-| Weitere registrierte Startprüfung | Erfolgreich; etwa 5,16 Sekunden. |
-| Zwei gleichzeitige Startanfragen aus dem Menü | Erfolgreich; ein Launcher-Start. |
-| Zurückgebliebene Sperrdatei | Verhindert den neuen Start nicht, wenn kein alter Prozess mehr lebt. |
-| Absturz nur des Workers | Wiederanlauf unter gleichem Supervisor; etwa 4,84–5,22 Sekunden. |
-| Vorübergehend gesperrte Datenbank beim Start | Worker beendet sich früh; nach Freigabe Wiederanlauf unter gleichem Supervisor. |
-| Echter automatischer Zeittrigger | Start erfolgreich; etwa 4,01 Sekunden nach Aufgabenausführung. |
-| Vollständiger Verlust von Supervisor und Worker | **Fehlgeschlagen: kein automatischer Wiederanlauf durch Windows innerhalb von 100 Sekunden.** |
+| Three additional full cold starts | 3/3 succeeded; about 2.87–2.90 seconds to HTTP availability. |
+| Another registered startup check | Succeeded; about 5.16 seconds. |
+| Two simultaneous menu startup requests | Succeeded; one launcher process started. |
+| Stale lock file | Did not prevent a new start when no old process was alive. |
+| Worker-only crash | Recovered under the same supervisor in about 4.84–5.22 seconds. |
+| Database temporarily locked at startup | Worker exited early; after the lock was released, it recovered under the same supervisor. |
+| Actual scheduled time trigger | Startup succeeded about 4.01 seconds after task execution. |
+| Complete loss of supervisor and worker | **Failed: Windows did not automatically recover within 100 seconds.** |
 
-Der vollständige Ausfall wurde auch mit explizitem Fehlercode 1 und nach automatischem Zeitstart beobachtet. Die Wiederholungseinstellungen der Aufgabe waren vorhanden; die Ursache des fehlenden Wiederanlaufs wurde noch nicht isoliert. Der reguläre Dienst wurde nach den Tests wieder gestartet und die temporäre Aufgabe entfernt.
+The full loss was also observed with explicit exit code 1 and after an automatic scheduled start. Task retry settings were present; the reason automatic recovery failed has not been isolated. The regular service was restored after testing and the temporary task was removed.
 
-**Nicht ausgeführt:** tatsächlicher PC-Neustart, Abmeldung/Anmeldung, Zurücksetzen des Windows-Dateicaches und Netzwerkänderungen während des Bootens. Der Zeittrigger prüft automatische Ausführung, nicht den tatsächlichen Anmeldetrigger.
+**Not performed:** actual PC reboot, sign-out/sign-in, clearing the Windows file cache and changing network conditions during boot. The time trigger checks scheduled execution, not the actual logon trigger.
 
-## Reale direkte Suche nach Prozessneustart
+## Real direct search after a process restart
 
-Messungen aus einem kleinen lokalen Bestand mit 11 PDF-Anhängen, 1.611 Chunks und Multilingual E5 Small. Sie sind Beispiele auf einem einzelnen PC, kein allgemeiner Benchmark.
+Measurements from a small local library with 11 PDF attachments, 1,611 chunks and Multilingual E5 Small. These are examples from one PC, not a general benchmark.
 
-| Anfrage / Bereich | Treffer insgesamt | Dauer |
+| Query / scope | Total hits | Duration |
 | --- | ---: | ---: |
-| `Average`, gesamte Testbibliothek | 44 | 83,02 s |
-| DINO-Momentum-Lehrer, passendes Test-PDF | 22 | 3,67 s |
-| Fachfremde klinische Migräne-Frage, abgegrenzte Paper-Auswahl | 0 | 26,16 s |
+| `Average`, entire test library | 44 | 83.02 s |
+| DINO momentum teacher, matching test PDF | 22 | 3.67 s |
+| Unrelated clinical migraine question, restricted paper selection | 0 | 26.16 s |
 
-Die erste Anfrage enthält Modellinitialisierung und Suche; diese Zeiten wurden nicht getrennt gemessen. Ein schneller Health-Check bedeutet nicht, dass die erste Suche schnell ist. Index- und Zitatanzahl blieben bei der Ausfallprüfung erhalten.
+The first query includes model initialization and search; those durations were not measured separately. A fast health check does not mean the first search will be fast. Index and quotation counts remained intact during the failure test.
 
-## Bekannte Grenzen
+## Known limitations
 
-- **Dienstverlust:** neuen Zotero-Wiederanlauf bei realem Booten und über längere Sitzungen prüfen.
-- **Kaltstart:** sichtbarer Modellladezustand und gezieltes Vorladen können die erste Suche verständlicher machen.
-- **Retrieval:** Schwellenwerte hängen von Modell, Sprache und Query ab. Es gibt bisher keinen breiten Recall-/Precision-Benchmark.
-- **Große Bestände:** linearer exakter Cosinus-Scan, zusätzlicher BERTScore-Aufwand, kein ANN-Index.
-- **PDFs:** kein eingebautes OCR; Tabellen, Formeln, Spalten und ungewöhnliche Textextraktion können Zitate oder Koordinaten beeinträchtigen.
-- **Seiten:** PDF-Seitenlocator kann von gedruckter Paginierung abweichen.
-- **KI:** begrenzter Kandidatenkontext; Modell kann Belege übersehen oder falsch einordnen. Tool-Unterstützung muss zum Anbieter und Modell passen.
-- **Grafiken:** relative Ähnlichkeitsgruppen und Mengen gefundener Stellen sind keine Wahrscheinlichkeiten oder Qualitätsbewertungen.
-- **Oberfläche:** native Prüfung im kleinen Zotero-Fenster, Dropdowns, Reader-Navigation und Animationen bleibt erforderlich.
-- **Installation:** vollständiger Windows-Weg; andere Plattformen nicht als fertige Distribution geprüft.
-- **Updates:** kein automatisches Add-on-Update.
-- **Reproduzierbarkeit:** Release-Laufzeit enthält die exakten Paketversionen in `PACKAGES.json`; Änderungen am Laufzeit-Build separat erneut prüfen.
+- **Service loss:** verify recovery on real boots and during longer sessions.
+- **Cold start:** a visible model loading state and targeted preloading could make the first search easier to understand.
+- **Retrieval:** thresholds depend on model, language and query. There is no broad recall/precision benchmark yet.
+- **Large libraries:** exact cosine scan is linear, BERTScore adds cost, and there is no ANN index.
+- **PDFs:** no built-in OCR; tables, formulas, columns and unusual text extraction can affect quotations or coordinates.
+- **Pages:** PDF page locators may differ from printed page numbering.
+- **AI:** candidate context is limited; a model can miss evidence or classify it incorrectly. Tool support depends on provider and model.
+- **Charts:** relative similarity groups and passage counts are not probabilities or quality ratings.
+- **UI:** native checks in small Zotero windows, dropdowns, reader navigation and animations remain necessary.
+- **Installation:** complete distribution targets Windows; other platforms are not verified as finished distributions.
+- **Updates:** no automatic add-on updates.
+- **Reproducibility:** release runtime records exact package versions in `PACKAGES.json`; changes to the runtime build need separate verification.
 
-## Sinnvolle nächste Schritte
+## Recommended next steps
 
-1. Supervisor-Wiederanlauf und echte Windows-Neustarts zuverlässig absichern.
-2. Kleine referenzierte Testbibliothek mit geprüften erwarteten Fundstellen, fehlenden Belegen und Sprachvarianten aufbauen.
-3. Retrieval-Qualität und Laufzeit pro Modell/Bestandsgröße messen; Schwellenwerte daraus ableiten.
-4. PDF-Navigation und Fensterbedienung automatisiert im nativen Zotero prüfen.
-5. ANN-Index und Batch-/Cache-Verbesserungen erst anhand gemessener Engpässe auswählen.
-6. Für eine stabile Release-Distribution Abhängigkeiten, Modelldaten, Installationswege und Lizenzhinweise reproduzierbar festhalten.
+1. Make supervisor recovery and actual Windows restarts reliable.
+2. Build a small reference library with verified expected passages, missing-evidence cases and language variants.
+3. Measure retrieval quality and runtime per model and library size; derive thresholds from those measurements.
+4. Automate PDF navigation and window operation in native Zotero.
+5. Choose an ANN index and batching/cache improvements based on measured bottlenecks.
+6. For a stable release, reproducibly record dependencies, model data, installation paths and license notices.

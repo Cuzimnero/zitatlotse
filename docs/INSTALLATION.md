@@ -1,70 +1,70 @@
-# Installation und Updates
+# Installation and updates
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-## Voraussetzungen
+## Requirements
 
-- Zotero **10.0.x** unter **Windows x64**.
-- Lokal vorhandene PDFs mit lesbarem Text. Zitatlotse führt selbst keine OCR aus.
-- Platz für die enthaltene CPU-Laufzeit und die gewählten Modelle.
-- Internet beim erstmaligen Download eines Suchmodells.
-- Optional: Ollama mit installiertem Modell oder eigener API-Schlüssel.
+- Zotero **10.0.x** on **Windows x64**.
+- PDFs available locally with extractable text. Zitatlotse does not perform OCR.
+- Disk space for the bundled CPU runtime and selected models.
+- Internet access for the first download of a search model.
+- Optional: Ollama with a model installed, or an API key.
 
-## Normale Installation: nur die XPI
+## Standard installation: the XPI only
 
-1. **Zitatlotse-0.27.0.xpi** aus den [Releases](https://github.com/Cuzimnero/zitatlotse/releases) herunterladen. Das erste öffentliche Release ist noch in Vorbereitung.
-2. In Zotero **Werkzeuge → Add-ons → Add-on aus Datei installieren** wählen und die XPI öffnen.
-3. Zotero neu starten. Die Erweiterung richtet ihre mitgelieferte lokale Laufzeit im Benutzerprofil ein und startet den Suchdienst automatisch.
-4. Das violette Symbol öffnen. Der Fortschrittsbalken zeigt Einrichtung, Prüfung und Start. Bei einer fehlgeschlagenen Einrichtung **Suchdienst prüfen** zum Wiederholen wählen.
-5. Eine PDF oder einen Eintrag verarbeiten. Beim ersten Verarbeiten werden das gewählte Embedding-Modell und das BERTScore-Modell heruntergeladen.
+1. Download **Zitatlotse-0.27.0.xpi** from [Releases](https://github.com/Cuzimnero/zitatlotse/releases). The first public release is still being prepared.
+2. In Zotero, choose **Tools → Add-ons → Install Add-on From File** and select the XPI.
+3. Restart Zotero. The add-on installs its bundled local runtime in your user profile and starts the search service automatically.
+4. Open the purple button. A progress bar shows setup, checks and startup. If setup fails, choose **Check search service** to retry.
+5. Process a PDF or library item. The selected embedding model and BERTScore model are downloaded on first use.
 
-**Keine separate Python-Installation, kein zusätzliches Installationsskript und kein manueller Dienststart.** Die XPI enthält Python, CPU-Bibliotheken und Backend-Code. Die Laufzeit wird aus dem installierten Add-on entpackt. Modelle bleiben wegen ihrer Größe und freien Auswahl separate Downloads.
+**No separate Python installation, extra installer script or manual service launch is needed.** The XPI contains Python, CPU libraries and backend code. The runtime is extracted from the installed add-on. Model weights remain separate downloads because of their size and the user's choice of model.
 
-Direkte Suche braucht keinen KI-Schlüssel. Für KI-Suche unter **Verbindungen** Anbieter und Modell wählen. Ollama selbst ist ein optionales externes Programm.
+Direct search does not need an AI key. For AI search, choose a provider and model under **Connections**. Ollama itself is an optional external program.
 
 ## Updates
 
-Die neue XPI installieren und Zotero neu starten. Die Erweiterung erkennt die neue Backend-Version und aktualisiert ihren Code automatisch. Datenbank, Einstellungen, Modellcache und gespeicherte Zitate bleiben unter dem bisherigen Datenpfad erhalten. Ein Modellwechsel bietet zusätzlich einen bestätigten Neuaufbau der Embeddings an.
+Install the new XPI and restart Zotero. The add-on detects the new backend version and updates its code automatically. The database, settings, model cache and saved quotations remain at their existing data path. Changing the embedding model offers a separate, confirmed index rebuild.
 
-Die Anwendung startet während eines Code-Updates ihren eigenen Dienst neu. Deshalb ein Update nicht während einer laufenden Verarbeitung oder KI-Abfrage beginnen.
+During a code update, the add-on restarts its own service. Do not start an update while processing or an AI request is running.
 
-## Start und Wiederanlauf
+## Startup and recovery
 
-- Start beim Laden der Erweiterung in Zotero.
-- Erneute Prüfung beim Öffnen des Suchfensters oder bei einer unterbrochenen Verbindung.
-- Ein gemeinsames Startversprechen verhindert doppelte Starts durch gleichzeitige UI-Anfragen.
-- Während Zotero läuft: Erreichbarkeit alle 30 Sekunden prüfen und einen verlorenen Prozessbaum erneut starten.
-- Der Supervisor startet einen abgestürzten Worker selbst neu.
-- Eine fehlgeschlagene Einrichtung wird sichtbar gemeldet; **Suchdienst prüfen** startet einen neuen Versuch.
+- Start when the add-on loads in Zotero.
+- Check again when the search window opens or the connection is interrupted.
+- A shared startup promise prevents duplicate launches from simultaneous UI requests.
+- While Zotero is open, check service availability every 30 seconds and restart a lost process tree.
+- The supervisor restarts a crashed worker.
+- A failed setup is reported in the UI; **Check search service** starts another attempt.
 
-Die normale Installation benötigt keine Windows-Aufgabe und keine Administratorrechte. Der alte manuelle Installer bleibt als Entwickler-/Legacy-Weg im Quellcode erhalten. Eine bereits früher eingerichtete Windows-Aufgabe wird durch die XPI nicht automatisch gelöscht.
+The standard installation needs no Windows scheduled task or administrator rights. The old manual installer remains in the source as a developer/legacy path. The XPI does not automatically remove a Windows task created by an earlier installation.
 
-## Pfade und Diagnose
+## Paths and diagnostics
 
-| Inhalt | Ort unter `%USERPROFILE%\.zitatlotse` |
+| Contents | Location under `%USERPROFILE%\.zitatlotse` |
 | --- | --- |
-| Mitgelieferte Python-Laufzeit | `runtime\<Paketkennung>` |
-| Installierte Version und Startpfade | `installation.json` |
-| Einrichtungsfortschritt | `setup-state-0.27.0.json` |
-| Index und gespeicherte Zitate | `backend\data\quotes.sqlite` |
-| Modellcache | `backend\data\models` |
-| Einstellungen ohne Schlüssel | `backend\data\settings.json` |
-| Prüfung der Laufzeit | `runtime-check.log`, `runtime-error.log` |
-| Dienstprotokoll | `backend\data\service.log` |
+| Bundled Python runtime | `runtime\<package-id>` |
+| Installed version and startup paths | `installation.json` |
+| Setup progress | `setup-state-0.27.0.json` |
+| Index and saved quotations | `backend\data\quotes.sqlite` |
+| Model cache | `backend\data\models` |
+| Settings without keys | `backend\data\settings.json` |
+| Runtime checks | `runtime-check.log`, `runtime-error.log` |
+| Service log | `backend\data\service.log` |
 
-Schlüssel liegen im Betriebssystem-Anmeldeinformationsspeicher. Diagnoseprotokolle und Datenbanken nicht ungeprüft öffentlich teilen.
+Keys are stored in the operating system's credential store. Do not share diagnostic logs or databases publicly without reviewing them.
 
-Ein erfolgreicher Health-Check bestätigt einen laufenden Dienst. Die Modelle werden anschließend bei Bedarf geladen; die erste Suche kann deshalb länger dauern.
+A successful health check confirms that the service is running. Models load on demand afterward, so the first search can take longer.
 
-## Release selbst bauen
+## Build a release locally
 
-Nur Entwickler benötigen Python und Node.js:
+Only developers need Python and Node.js:
 
 ```powershell
 python build_runtime.py
 python package.py
 ```
 
-Der Windows-Build lädt das offizielle, per SHA-256 geprüfte eingebettete Python und die Bibliotheken, prüft ihre Imports und erstellt die komplette XPI. Paketversionen und Lizenzdateien liegen in der enthaltenen Laufzeit. `python package.py --source-only` erstellt nur das Quellcode-Archiv. Ein Oberflächenpaket ohne Laufzeit wird nicht als fertige Release-XPI gebaut.
+The Windows build downloads the official embedded Python, verifies its SHA-256, checks library imports and builds the complete XPI. Package versions and license files are included in the runtime. `python package.py --source-only` creates only the source archive. A UI-only package is not built as a finished release XPI.
 
-Andere Betriebssysteme sind mit dieser Distribution noch nicht als vollständiger Installationsweg unterstützt.
+Other operating systems are not yet supported as complete installation distributions.

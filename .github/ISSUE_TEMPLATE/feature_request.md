@@ -1,15 +1,15 @@
 ---
-name: Verbesserung vorschlagen
-about: Konkreten Nutzen und einen möglichen Ablauf beschreiben
+name: Suggest an improvement
+about: Describe a concrete benefit and a possible workflow
 title: ""
 labels: "enhancement"
 assignees: ""
 ---
 
-## Welcher Arbeitsablauf soll besser werden?
+## Which workflow should be improved?
 
-## Vorschlag
+## Suggestion
 
-## Beispiel
+## Example
 
-## Wie könnte der Erfolg geprüft werden?
+## How could success be evaluated?

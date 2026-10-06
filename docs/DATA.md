@@ -1,36 +1,36 @@
-# Daten und Datenschutz
+# Data and privacy
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-## Was lokal bleibt
+## What stays local
 
-PDF-Dateien werden aus ihrem lokalen Zotero-Pfad gelesen. Zitatlotse speichert Text-Chunks, Metadaten, Sprache, Themenmerkmale, Vektoren und gespeicherte Zitate in einer eigenen SQLite-Datei. Der Suchdienst verändert nicht direkt Zoteros Datenbank.
+PDF files are read from their local Zotero paths. Zitatlotse stores text chunks, metadata, language, topic features, vectors and saved quotations in its own SQLite database. The search service does not write directly to Zotero's database.
 
-Embedding-Berechnung, BERTScore und Dokumentgrafik laufen lokal. Die direkte Suche benötigt keinen Cloud-Anbieter. Ein erster Download von Paketen oder Modellgewichten ist trotzdem eine Netzwerkverbindung; dabei wird die Query nicht für eine Suchauswertung an einen Zitatlotse-Server gesendet.
+Embedding generation, BERTScore and the document chart run locally. Direct search does not require a cloud provider. Initial downloads of packages or model weights still require an internet connection; the query is not sent to a Zitatlotse server for search evaluation.
 
-Die Datenbank enthält auch extrahierte Dokumenttexte und lokale Dateipfade. Sie ist durch Zitatlotse nicht zusätzlich verschlüsselt. Zugriffsschutz und Sicherung hängen vom Betriebssystem und deiner eigenen Umgebung ab.
+The database also contains extracted document text and local file paths. Zitatlotse does not add database encryption. Access control and backups depend on your operating system and environment.
 
-## Was an einen KI-Anbieter gehen kann
+## What may be sent to an AI provider
 
-Bei OpenAI, Anthropic oder DeepSeek werden deine Frage, Suchformulierungen und abgerufene Originalstellen an den gewählten Anbieter gesendet. Die einstufige Suche übergibt eine begrenzte Auswahl; mehrstufige Suche kann pro Schritt weitere Stellen und bisherige Werkzeugantworten im Kontext übertragen. Der Belegmodus kann viele abgerufene Kandidaten in mehreren Gruppen bewerten.
+With OpenAI, Anthropic or DeepSeek, your question, generated search queries and retrieved original passages are sent to the selected provider. Single-step search sends a limited selection. Multi-step search may include additional passages and previous tool results in each step's context. Evidence mode may ask the model to assess many retrieved candidates in several groups.
 
-Ein Verbindungstest verwendet ebenfalls die ausgewählte API. Modellkataloge werden vom Anbieter geladen. Die jeweiligen Datenschutzbedingungen und API-Kosten sind vom Anbieter abhängig.
+A connection test also uses the selected API. Model catalogs are fetched from the provider. Privacy terms and API costs depend on that provider.
 
-Ollama wird als lokaler HTTP-Server angesprochen. Seine Modelle müssen installiert sein. Zitatlotse betreibt keinen eigenen Cloud-Suchdienst und verlangt keinen eigenen Account.
+Ollama is accessed as a local HTTP server. Its models must already be installed. Zitatlotse does not operate a cloud search service and does not require an account.
 
-## Schlüssel und Sitzungen
+## Keys and sessions
 
-- API-Schlüssel: über `keyring` im Anmeldeinformationsspeicher des Betriebssystems.
-- Verbindungseinstellungen ohne Schlüssel: lokale `settings.json`.
-- Such-/Chatansichten: im Speicher der Zotero-Sitzung, je Bibliothek. Reset oder Zotero-Neustart leert sie.
-- Gespeicherte Zitate und Notizen: dauerhaft in SQLite.
-- Suchstände im Dienst: begrenzte Lebensdauer; nach Dienstneustart nicht wiederverwendbar.
-- Aktivitätsansicht: konkrete Suchereignisse und Queries, keine privaten Modellgedanken.
+- API keys: stored through `keyring` in the operating system's credential store.
+- Connection settings without keys: local `settings.json`.
+- Search and chat views: held in the Zotero session, separately for each library. Reset or restart Zotero to clear them.
+- Saved quotations and notes: stored persistently in SQLite.
+- Search states on the service: expire after a limited period and cannot be reused after a service restart.
+- Activity view: shows concrete search events and queries, not private model reasoning.
 
-## Lokale HTTP-Schnittstelle
+## Local HTTP interface
 
-Der Server bindet an `127.0.0.1:8765`. Schreib-/Suchanfragen verwenden den Client-Header `X-Zitatlotse-Client: 1`; dieser ist **kein geheimes Authentifizierungstoken**. Die Schnittstelle ist für den lokalen Benutzer gedacht und sollte nicht ins Netzwerk veröffentlicht werden.
+The server binds to `127.0.0.1:8765`. Write and search requests use the client header `X-Zitatlotse-Client: 1`; this is **not a secret authentication token**. The interface is intended for the local user and must not be exposed to a network.
 
-## Öffentliche Fehlerberichte
+## Public bug reports
 
-Keine Datenbank, PDF-Dateien, Modellgewichte, Schlüssel, vollständigen Anbieterantworten oder unbereinigten Protokolle anhängen. Ein kleiner synthetischer Testfall mit Version, Modellen, Frage, Suchmodus, Bereich und anonymisierter Fehlermeldung ist vorzuziehen. Testausgaben können selbst Dokumenttexte enthalten und müssen vor Weitergabe überprüft werden.
+Do not attach databases, PDFs, model weights, keys, full provider responses or unredacted logs. Prefer a small synthetic test case with the version, models, question, search mode, scope and an anonymized error message. Test output may itself contain document text and must be reviewed before sharing.

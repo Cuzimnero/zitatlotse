@@ -1,190 +1,190 @@
-# Alle Funktionen
+# Feature catalog
 
-[Zur Projektseite](../README.md)
+[Project page](../README.md)
 
-Stand: **0.27.0**. Die folgende Liste beschreibt implementierte Funktionen. Ihr Vorhandensein ist keine Zusage, dass alle Kombinationen von PDFs, Modellen und Zotero-Versionen bereits zuverlässig getestet sind. Siehe [Teststand](STATUS.md).
+As of **0.27.0**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
 
-## 1. Zotero-Oberfläche
+## 1. Zotero interface
 
-- Ein violettes Anführungszeichen-Symbol in der rechten Leiste öffnet die KI-Suche.
-- Ein eigener Zitatlotse-Menüpunkt bietet Zugriff auf Suche, Verbindungen und Verarbeitung.
-- Zentrale Ansichten für KI-Suche, direkte Suche, gespeicherte Zitate, Verbindungen und Einstellungen.
-- Deutsch und Englisch; Auswahl nach der eingestellten Zotero-Sprache, sonst Englisch.
-- Mittiges, an die Fenstergröße angepasstes Suchfenster.
-- Öffnungsanimation vom Einstiegssymbol aus; beim erneuten Anklicken umgekehrte Schließanimation.
-- Schließen über X oben rechts, Escape oder den Hintergrund.
-- Hervorgehobener Rahmen des KI-Chatbereichs; violette Hauptgestaltung.
-- Animierte Fortschrittsanzeigen für Suche, Verarbeitung und Verbindungen; blätternde PDF-Seiten unter dem Fragefeld.
+- A purple quotation-mark button in the right sidebar opens AI search.
+- A dedicated Zitatlotse menu provides access to search, connections and PDF processing.
+- Central views for AI search, direct search, saved quotations, connections and settings.
+- German and English; the add-on follows Zotero's selected language and defaults to English.
+- A centered search window that adapts to the available space.
+- Opening animation from the sidebar button and a reversed closing animation when clicked again.
+- Close using the top-right X, Escape or the background.
+- Highlighted border around the AI chat area with the purple product theme.
+- Animated progress indicators for search, processing and connections; animated page-turning PDF pages below the question field.
 
-## 2. PDFs verarbeiten
+## 2. Process PDFs
 
-- **Diese PDF verarbeiten:** den ausgewählten PDF-Anhang indizieren.
-- **Diesen Eintrag verarbeiten:** die PDFs des ausgewählten Literatur-Eintrags indizieren.
-- **Alle neuen/geänderten PDFs verarbeiten:** den Bestand der ausgewählten Bibliothek prüfen und fehlende oder geänderte Anhänge verarbeiten.
-- Neu hinzugefügte PDF-Anhänge automatisch zur Verarbeitung einreihen.
-- Bibliothek, Eintrags- und Anhangskennung, Titel, Autoren, Jahr, Sprache, Sammlungen und PDF-Fundorte dem lokalen Index zuordnen.
-- Sprache aus dem Zotero-Feld übernehmen; sonst aus dem Text schätzen.
-- Hinweise auf nicht lokal vorhandene oder nicht auslesbare Dateien anzeigen.
-- Anzahl verarbeiteter PDFs und erzeugter Chunks sowie Fortschritt des Bibliotheksscans anzeigen.
+- **Process this PDF:** index the selected PDF attachment.
+- **Process this item:** index PDFs attached to the selected library item.
+- **Process all new or changed PDFs:** scan the selected library and process missing or changed attachments.
+- Automatically queue newly added PDF attachments for processing.
+- Associate the library, item and attachment IDs, title, authors, year, language, collections and PDF locations with the local index.
+- Read language from Zotero metadata, or estimate it from the text.
+- Report files that are unavailable locally or cannot be read.
+- Show the number of processed PDFs and created chunks, plus library scan progress.
 
-## 3. Chunks und automatische Themenmerkmale
+## 3. Chunks and automatic topic features
 
-- PDF-Seiten einzeln auslesen und Leerraum vereinheitlichen.
-- Chunks mit höchstens 100 Wörtern und bis zu 20 Wörtern Überlappung erzeugen.
-- Möglichst an Satzgrenzen teilen; lange Einzelsätze bei Bedarf innerhalb des Satzes trennen.
-- Chunks überschreiten keine PDF-Seitengrenze.
-- Bis zu 16 Themenmerkmale je Dokument aus Inhaltswörtern, Wortpaaren und Zotero-Titel erzeugen.
-- Normalisierten Mittelwert der Chunk-Vektoren als Themenvektor speichern.
-- Merkmale, Metadaten, Text, normalisierte Vektoren und später gespeicherte Zitate in einer eigenen SQLite-Datenbank halten.
+- Extract PDF pages individually and normalize whitespace.
+- Create chunks of up to 100 words with up to 20 words of overlap.
+- Prefer sentence boundaries; split a long sentence internally when needed.
+- Never let a chunk cross a PDF page boundary.
+- Generate up to 16 document topic features from content words, word pairs and the Zotero title.
+- Store the normalized mean of chunk vectors as the topic vector.
+- Store features, metadata, text, normalized vectors and later saved quotations in a dedicated SQLite database.
 
-Die Themenmerkmale sind ein automatisch erzeugtes lokales Suchhilfsmittel. Sie sind keine vom LLM geprüfte Inhaltszusammenfassung.
+Topic features are an automatically generated local search aid. They are not an LLM-verified content summary.
 
-## 4. Suchbereich
+## 4. Search scope
 
-- Jede Suche verwendet genau eine Zotero-Bibliothek.
-- Sammlung auswählen; Untersammlungen einschließen.
-- Die aktuellen zugehörigen PDF-Anhänge aus Zotero übernehmen und im Dienst als feste Auswahl prüfen.
-- Explizit leere Auswahl liefert einen leeren Bereich und wird nicht zur gesamten Bibliothek erweitert.
-- Direkte Suche, KI-Suche, Tool Calls und Dokumentgrafik verwenden denselben gewählten Suchbereich.
-- Bei Wechsel des Bereichs laufende Abfragen abbrechen beziehungsweise verspätete Antworten verwerfen.
-- Suchstände dürfen nicht in eine andere Bibliothek oder abweichende Dateiauswahl übernommen werden.
+- Every search uses exactly one Zotero library.
+- Select a collection and include its subcollections.
+- Read the current PDF attachments for the selected scope from Zotero and validate the fixed selection in the service.
+- An explicitly empty selection stays empty; it does not expand to the whole library.
+- Direct search, AI search, tool calls and the document chart use the same selected scope.
+- Cancel in-flight queries or discard late responses when the scope changes.
+- Search state must not be reused for a different library or a different file selection.
 
-## 5. Direkte Suche
+## 5. Direct search
 
-- Ohne Cloud-LLM ausführen: sehr grobe Themenvorauswahl, danach Cosinus-Vergleich aller verbleibenden Chunks und BERTScore-Reranking.
-- Kurze Begriffe, Akronyme und passende wörtliche Anfragen unabhängig von Groß-/Kleinschreibung behandeln.
-- Verschiedene tatsächliche Fundorte eines Wortes erhalten.
-- Wiederholte Originalstellen aus überlappenden Chunks bereinigen.
-- Lokal als zu schwach bewertete Treffer verwerfen.
-- Zitate mit Paper-Titel, PDF-Seite, Originaltext und Suchwerten anzeigen.
-- Ergebnisse in Seiten mit höchstens 20 Zitaten aufteilen.
-- Bereits geladene Seiten wieder öffnen; Suchstand im Dienst bis zu 15 Minuten halten.
+- Runs without a cloud LLM: coarse topic prefilter, cosine comparison across all remaining chunks, then BERTScore reranking.
+- Match short terms, acronyms and literal queries regardless of capitalization.
+- Keep distinct real locations where a word occurs.
+- Deduplicate repeated original passages caused by overlapping chunks.
+- Discard hits that score too weakly locally.
+- Show quotations with paper title, PDF page, original text and search scores.
+- Paginate results with up to 20 quotations per page.
+- Reopen already loaded pages; the service retains search state for up to 15 minutes.
 
-## 6. KI-Suche
+## 6. AI search
 
-- Natürlich formulierte Frage entgegennehmen, beispielsweise auf Deutsch zu englischen Papers.
-- Eine Suchanfrage pro Dokumentsprache formulieren; die ursprüngliche Anfrage als zusätzliche Variante erhalten.
-- Lokale Suchpipeline für die formulierten Anfragen verwenden.
-- Abgerufene Originalstellen vom gewählten Modell beurteilen lassen.
-- Kurze Antwort mit Nummernverweisen auf geprüfte Fundstellen erzeugen.
-- Nur gültige Quellenreferenzen für die Anzeige übernehmen.
-- Standardmäßig die von der KI ausgewählten Zitate anzeigen.
-- **Alle Treffer anzeigen** schaltet auf die weiteren bereits abgerufenen Kandidaten um.
-- Fehlende belastbare Belege sollen zu keiner ausgewählten Zitatliste führen.
-- Bei nicht verfügbarer KI mit Hinweis auf die strengere lokale Suche zurückfallen.
+- Accept a question in natural language, such as a German question about English papers.
+- Formulate one search query per document language and retain the original question as an additional variant.
+- Use the local search pipeline for the formulated queries.
+- Let the selected model assess retrieved original passages.
+- Generate a short answer with numbered references to checked passages.
+- Display only valid source references.
+- By default, show quotations selected by the AI.
+- **Show all results** switches to other already retrieved candidates.
+- If no reliable evidence is found, do not mark any quotations as selected.
+- If AI is unavailable, show a notice and fall back to stricter local search where possible.
 
-Die KI sieht eine begrenzte Menge abgerufener Kandidaten. **Alle Treffer** bedeutet nicht alle denkbaren Stellen der gesamten Literatur.
+The AI sees a limited set of retrieved candidates. **All results** does not mean every possible passage in the whole library.
 
-## 7. Mehrstufige Suche / Agentic Calls
+## 7. Multi-step search / agentic calls
 
-- Echte Werkzeuge `search_library` und `finish_search` verwenden, wenn der Anbieter und das Modell das unterstützen.
-- Nach einem Suchlauf weitere Anfragen formulieren, Ergebnisse zurückgeben und die Suche verfeinern.
-- Innerhalb des vom Dienst festgelegten Bibliotheks-/Sammlungsbereichs bleiben.
-- Ergebnisse verschiedener Schritte zusammenführen und doppelte Stellen bereinigen.
-- Bereits ausgeführte identische Anfragen innerhalb einer Frage wiederverwenden.
-- Funktion ein-/ausschalten; höchstens 1–6 Suchschritte, Standard 3.
-- Agentenphase auf ein Zeitbudget begrenzen; laufende lokale Berechnung kann dieses Budget überschreiten.
-- Bei fehlender Tool-Unterstützung oder ungültigen Antworten mit Hinweis auf den einstufigen Ablauf zurückfallen.
-- Optionale Aktivitätsansicht: Anfrage geplant, Modell aufgerufen, lokale Suche gestartet, Ergebnis zurückgegeben, erneuter Tool Call und Abschluss.
+- Use the real `search_library` and `finish_search` tools when the provider and model support them.
+- Formulate follow-up queries after a search, return results and refine the search.
+- Stay within the library and collection scope set by the service.
+- Merge results from different steps and deduplicate passages.
+- Reuse identical queries already run for the current question.
+- Enable or disable the feature; set a limit of 1–6 search steps, default 3.
+- Limit agent steps with a time budget; an ongoing local computation may outlast this budget.
+- If tool calls are unsupported or the response is invalid, show a notice and fall back to the one-step flow.
+- Optional activity view shows events such as query planned, model called, local search started, results returned, another tool call and completion.
 
-Die Aktivitätsansicht zeigt technische Suchereignisse und Abfragen, keine privaten Modellgedanken.
+The activity view shows technical search events and queries, not private model reasoning.
 
-## 8. Belege suchen: Pro und Kontra
+## 8. Find evidence: supporting and opposing
 
-- Eine Aussage statt einer offenen Frage eingeben.
-- Auch unterstützende und widersprechende Aspekte suchen; mehrstufige Suche verwenden, wenn aktiviert und verfügbar.
-- Abgerufene Kandidaten in Gruppen von der KI beurteilen lassen.
-- Pro, Kontra und neutral/unklar unterscheiden.
-- Direkten Beleg und Beleg zu einem Teilaspekt unterscheiden.
-- Kurze Befunde und Begründungen mit Originalzitaten und Paper-Verweisen darstellen.
-- Neutrale Kandidaten über die Anzeige aller Treffer erreichbar machen.
-- Rot-grünen Balken aus der Anzahl der Pro-/Kontra-Stellen berechnen; neutrale Stellen separat zählen.
+- Enter a claim rather than an open question.
+- Search for supporting and opposing aspects; use multi-step search when enabled and available.
+- Ask the AI to assess retrieved candidates in groups.
+- Distinguish supporting, opposing and neutral/unclear evidence.
+- Distinguish direct evidence from evidence about a related aspect.
+- Show concise findings and reasons with original quotations and paper references.
+- Make neutral candidates available through the all-results view.
+- Calculate the red/green bar from the count of supporting and opposing passages; count neutral passages separately.
 
-Beispiel: 6 Pro, 4 Kontra, 3 neutral ergeben 60 % Pro / 40 % Kontra im Balken und zusätzlich 3 neutrale Stellen. Keine Aussage über Vollständigkeit, Studienqualität oder Wahrheit.
+For example, 6 supporting, 4 opposing and 3 neutral passages produce 60% supporting and 40% opposing in the bar, plus 3 neutral passages. This says nothing about completeness, study quality or truth.
 
-## 9. Geschätzte Dokumentrelevanz
+## 9. Estimated document relevance
 
-- Nach der Frage den **höchsten Chunk-Cosinus-Wert je verarbeitetem Dokument** bestimmen.
-- Dafür alle Chunks im gewählten Bereich betrachten, unabhängig von Zitatfiltern oder der KI-Auswahl.
-- Bei verfügbaren KI-Sprachvarianten diese für die betreffenden Dokumentsprachen wiederverwenden.
-- Das beobachtete Spektrum in relative Farbgruppen einteilen; Sonderfälle wie gleiche oder fehlende Werte gesondert behandeln.
-- Animiertes Ringdiagramm mit Dokumentanzahl und Gruppenanteilen anzeigen.
-- Kategorien anklicken und die zugehörigen Dokumente mit Wert und bester PDF-Seite ansehen.
-- Identische indizierte Inhalte anhand von Text-/Seiten-/Chunk-Fingerabdrücken zusammenfassen.
-- Dokumentliste paginieren und aus ihr das PDF öffnen.
-- Aktives Modell und Modell-/Sprachhinweise anzeigen.
+- For each processed document, find the **highest chunk cosine similarity** to the query.
+- Consider every chunk in the selected scope, regardless of quotation filters or AI selection.
+- Reuse available language-specific AI query variants for their corresponding document languages.
+- Divide the observed score range into relative color groups; handle equal or missing values separately.
+- Show an animated ring chart with the document count and group shares.
+- Select a group to view its documents, scores and best PDF pages.
+- Group identical indexed content using text, page and chunk fingerprints.
+- Paginate the document list and open PDFs from it.
+- Show the active model and model/language notices.
 
-Eine Gruppe mit 28 % kann niedrigere Werte enthalten als eine mit 14 %: Die Prozentzahlen zählen Dokumente. Der Ähnlichkeitswert steht beim einzelnen Dokument.
+A group containing 28% can have lower scores than a group containing 14%: the percentages count documents. Each document shows its own similarity value.
 
-## 10. PDF-Fundort und Zitieren
+## 10. PDF location and citation
 
-- **Im PDF öffnen** oder Doppelklick auf den Zitattext öffnet den Zotero-Reader.
-- PDF-Seite und, soweit ermittelbar, Rechtecke der Textstelle übergeben.
-- Die Stelle vorübergehend hervorheben; keine automatische dauerhafte Zotero-Annotation anlegen.
-- Bei fehlenden passenden Textkoordinaten auf die PDF-Seite zurückfallen.
-- Originaltext mit Kurzbeleg und PDF-Seitenlocator kopieren.
-- In Zotero installierte CSL-Zitierstile in den Einstellungen wählen.
+- **Open in PDF** or double-click the quotation text to open the Zotero reader.
+- Pass the PDF page and, where available, rectangles for the text passage.
+- Temporarily highlight the passage; do not create a persistent Zotero annotation automatically.
+- If matching text coordinates cannot be found, open the PDF page instead.
+- Copy the original text with an in-text citation and PDF page locator.
+- Choose installed Zotero CSL citation styles in settings.
 
-## 11. Gespeicherte Zitate und Sitzungen
+## 11. Saved quotations and sessions
 
-- Zitat in der lokalen Datenbank speichern und später erneut öffnen.
-- Gespeicherte Zitate der gewählten Bibliothek durchsuchen.
-- Notiz hinzufügen oder bearbeiten; Zitat kopieren und entfernen.
-- Speicherung bleibt bei Schließen und bei Zotero-Neustart erhalten.
-- Chatnachrichten, Entwürfe, direkte Suchanfragen und angezeigte Ergebnisse beim Schließen des Fensters behalten.
-- Je Bibliothek einen eigenen Sitzungszustand halten.
-- Chat beziehungsweise direkte Suche per Reset leeren; Zotero-Neustart leert diese temporären Ansichten.
-- Nach Reset eintreffende alte Antworten nicht wieder einblenden.
+- Save a quotation to the local database and reopen it later.
+- Search saved quotations in the selected library.
+- Add or edit a note, copy a quotation or remove it.
+- Saved data persists when the window closes or Zotero restarts.
+- Keep chat messages, drafts, direct search queries and displayed results when the window closes.
+- Keep separate session state for each library.
+- Reset the chat or direct-search view; restarting Zotero clears these temporary views.
+- Do not restore stale responses that arrive after a reset.
 
-## 12. Embedding-Modelle
+## 12. Embedding models
 
-| Profil | Schwerpunkt |
+| Profile | Focus |
 | --- | --- |
-| `intfloat/multilingual-e5-small` | Kompakter mehrsprachiger Standard. |
-| `intfloat/multilingual-e5-base` | Größere mehrsprachige Alternative mit höherem Rechenbedarf. |
-| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Kompakte mehrsprachige Satzähnlichkeit. |
-| `sentence-transformers/all-MiniLM-L6-v2` | Kleines englisches Modell. |
-| `mixedbread-ai/deepset-mxbai-embed-de-large-v1` | Deutsch/Englisch, großer Encoder für Textstellensuche. |
-| `BAAI/bge-m3` | Mehrsprachig; in Zitatlotse werden die dichten Vektoren verwendet. |
-| `Qwen/Qwen3-Embedding-0.6B` | Mehrsprachige Suche mit Aufgabenbeschreibung, höherer Ressourcenbedarf. |
-| `BAAI/bge-small-en-v1.5` | Kompakte englische Textstellensuche. |
-| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | Kompakte englische Frage-Antwort-Suche. |
+| `intfloat/multilingual-e5-small` | Compact multilingual default. |
+| `intfloat/multilingual-e5-base` | Larger multilingual alternative with higher compute requirements. |
+| `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Compact multilingual sentence similarity. |
+| `sentence-transformers/all-MiniLM-L6-v2` | Small English model. |
+| `mixedbread-ai/deepset-mxbai-embed-de-large-v1` | Large German/English encoder for passage search. |
+| `BAAI/bge-m3` | Multilingual; Zitatlotse uses its dense vectors. |
+| `Qwen/Qwen3-Embedding-0.6B` | Multilingual search with task instructions; higher resource requirements. |
+| `BAAI/bge-small-en-v1.5` | Compact English passage search. |
+| `sentence-transformers/multi-qa-MiniLM-L6-cos-v1` | Compact English question-answer search. |
 
-- Kurze Erläuterung der Modellvorteile und Ressourcenanforderungen anzeigen.
-- Eigenes Modell mit Hugging-Face-Kennung `Organisation/Modell` oder Modellseiten-URL eintragen.
-- Eingabeprofil automatisch, Plain, E5, BGE, Qwen oder eigene Query-/Passage-Präfixe wählen.
-- Modellrevision und Batchgröße konfigurieren.
-- Kompatibilität anhand der Metadaten prüfen; benötigt wird ein unterstützter dichter Text-Encoder, keine beliebige Chat-/Klassifikations-/QA-Architektur.
-- Kein fremder Modellcode über `trust_remote_code` aktivieren.
-- Darauf hinweisen, dass Encoder und Suchformulierung die verwendeten Dokumentsprachen abdecken müssen.
-- Modellwechsel bestätigen lassen, anschließend alle gespeicherten Chunk- und Themenvektoren aller Bibliotheken neu berechnen.
-- Bis zum erfolgreichen Abschluss den bisherigen Index aktiv lassen; bei Fehlern zurückfallen.
-- Gespeicherte Zitate und Notizen beim Wechsel erhalten.
+- Show a brief description of each model's benefits and resource requirements.
+- Enter a custom model using its Hugging Face `organization/model` ID or model page URL.
+- Choose automatic, Plain, E5, BGE, Qwen or custom query/passage prefixes.
+- Configure model revision and batch size.
+- Check compatibility from model metadata; a supported dense text encoder is required, not an arbitrary chat, classification or QA architecture.
+- Never activate remote model code through `trust_remote_code`.
+- Explain that the encoder and search formulation must support the languages in the documents.
+- Confirm model changes, then recalculate all stored chunk and topic vectors across libraries.
+- Keep the previous index active until the rebuild succeeds; roll back if it fails.
+- Preserve saved quotations and notes when changing models.
 
-Die Auswahl ist eine Liste von Vergleichskandidaten, keine Rangliste garantierter Suchqualität. Modellbeschreibungen stehen im Code und sollten mit den jeweiligen Modellkarten abgeglichen werden.
+The profiles are comparison candidates, not a ranking that guarantees search quality. Model descriptions are in code and should be checked against each model card.
 
-## 13. KI-Anbieter und Modelllisten
+## 13. AI providers and model lists
 
-- **OpenAI**, **Anthropic**, **DeepSeek** und **Ollama** verbinden.
-- API-Schlüssel für Cloud-Anbieter im Anmeldeinformationsspeicher des Betriebssystems halten.
-- Beim Anbieterwechsel passende Standardkennung vorschlagen.
-- Modellliste vom gewählten Anbieter abrufen und aktualisieren.
-- Installierte Ollama-Modelle auswählen.
-- Bei nicht abrufbarem Katalog Vorschläge verwenden; Modellkennung weiterhin manuell eingeben.
-- Verbindung speichern und testen; ein Cloud-Test verwendet die API und kann Kosten verursachen.
-- Agentic-Optionen und Aktivitätsanzeige unabhängig von der Verbindung speichern.
-- Keine Zusage, dass jedes im Katalog aufgeführte Modell die benötigten Text-/Tool-Funktionen unterstützt.
+- Connect **OpenAI**, **Anthropic**, **DeepSeek** or **Ollama**.
+- Store cloud provider API keys in the operating system's credential store.
+- Suggest a suitable default model identifier when the provider changes.
+- Fetch and refresh the model list from the selected provider.
+- Select installed Ollama models.
+- If the catalog cannot be retrieved, show suggestions and still allow manual model IDs.
+- Save and test the connection; cloud tests call the API and can incur costs.
+- Store agentic search and the activity view independently from the connection.
+- Do not assume every model in a catalog supports the required text or tool features.
 
-## 14. Lokaler Dienst unter Windows
+## 14. Local service on Windows
 
-- Normale XPI-Installation mit mitgeliefertem Python, CPU-Bibliotheken und Backend unter `%USERPROFILE%\.zitatlotse`.
-- Suchserver ausschließlich auf `127.0.0.1:8765` starten.
-- Zotero richtet die Laufzeit automatisch ein und startet sie beim Laden des Add-ons oder Öffnen des Suchfensters.
-- Sichtbarer Einrichtungsfortschritt; fehlgeschlagene Einrichtung erneut versuchen.
-- Erreichbarkeit alle 30 Sekunden prüfen, solange Zotero geöffnet ist.
-- Parallel angeforderte Starts zusammenfassen; Betriebssystem-Sperre gegen doppelte Supervisoren.
-- Such-Worker nach Absturz mit ansteigender Wartezeit neu starten.
-- Getrennte Installations- und Dienstprotokolle.
-- Index und Modelle bei Updates erhalten; bisherige Installation bei Migration als Backup lassen.
+- Standard XPI installation with bundled Python, CPU libraries and backend under `%USERPROFILE%\.zitatlotse`.
+- Bind the search server only to `127.0.0.1:8765`.
+- Zotero automatically sets up the runtime and starts it when the add-on loads or the search window opens.
+- Show setup progress and retry failed setup.
+- Check service availability every 30 seconds while Zotero is open.
+- Coalesce concurrent start requests and use an operating-system lock to prevent duplicate supervisors.
+- Restart a crashed search worker with increasing delays.
+- Keep separate setup and service logs.
+- Preserve the index and models across updates; retain the previous installation as a migration backup.
 
-Der alte manuelle Installer und sein Windows-Autostart bleiben als Legacy-/Entwicklerweg vorhanden. Ein tatsächlicher Windows-Neustart ist zusätzlich zu prüfen. Details: [Status](STATUS.md).
+The old manual installer and its Windows startup task remain as legacy/developer paths. A real Windows reboot still needs testing. See [status](STATUS.md).
