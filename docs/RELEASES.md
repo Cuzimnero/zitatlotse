@@ -15,6 +15,8 @@ Das öffentliche Repository und erste Release sind derzeit **noch nicht veröffe
 
 Zur normalen Nutzung genügt die **XPI**. Quellcode-Archive sind für Entwicklung, Nachvollziehbarkeit und Lizenzrechte vorhanden.
 
+Nach Freigabe ist die XPI auch direkt über diesen Asset-Pfad abrufbar: [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi). Die übrigen Dateien und Prüfsummen liegen auf derselben Release-Seite.
+
 ## Veröffentlichung
 
 Der manuell auslösbare Workflow **Build a draft release** baut und prüft das vollständige Paket. Er erstellt ausschließlich einen unveröffentlichten Vorab-Release-Entwurf. Die Dateien werden als Assets angehängt; die XPI ist nach Veröffentlichung direkt über den Release-Bereich downloadbar. Ein gewöhnlicher Push veröffentlicht kein Release.

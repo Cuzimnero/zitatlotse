@@ -6,7 +6,11 @@ An experimental Zotero 10 add-on for finding original PDF passages, checking cla
 
 ![Actual AI chat in Zotero](docs/assets/screenshots/ai-chat-example.png)
 
-*Crop of an actual previously captured Zotero view. [Screenshot gallery and capture status](docs/SCREENSHOTS.md).* 
+*A genuine Zotero crop. These screenshots show an earlier UI version; a fresh full set for 0.27.0 is still pending. [Screenshot gallery and capture status](docs/SCREENSHOTS.md).*
+
+![Actual document relevance view in Zotero](docs/assets/screenshots/document-overview-example.png)
+
+*Genuine crop of the document relevance chart in Zotero.*
 
 ## Features
 
@@ -27,7 +31,7 @@ An experimental Zotero 10 add-on for finding original PDF passages, checking cla
 
 Requires Zotero 10 on Windows x64, locally available text PDFs, and disk space for the bundled runtime and models.
 
-Download **Zitatlotse-0.27.0.xpi** from the [release page](https://github.com/Cuzimnero/zitatlotse/releases) (public release currently in preparation), install it through Zotero's add-on manager and restart Zotero. Python, CPU libraries and backend are included. Zotero sets up and starts local search automatically with visible progress. No separate installer, Python installation or manual service launch is required.
+Download **Zitatlotse-0.27.0.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) once the public release is approved; it has not been published yet. Install it through Zotero's add-on manager and restart Zotero. Python, CPU libraries and backend are included. Zotero sets up and starts local search automatically with visible progress. No separate installer, Python installation or manual service launch is required.
 
 Process a PDF or item, then open the purple quotation button. Search model weights download on first use. Cloud AI is optional. For local AI, run Ollama and select an installed model.
 

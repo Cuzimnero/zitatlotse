@@ -10,7 +10,11 @@ Zitatlotse durchsucht deine PDF-Bibliothek, findet zitierbare Originalstellen un
 
 ![Echter KI-Chat in Zotero](docs/assets/screenshots/ai-chat-example.png)
 
-*Ausschnitt einer echten, zuvor aufgenommenen Zotero-Ansicht. [UI-Galerie und Aufnahmestand](docs/SCREENSHOTS.md).* 
+*Echter Ausschnitt aus Zotero. Die Screenshots zeigen einen früheren UI-Stand; neue vollständige Aufnahmen für 0.27.0 stehen noch aus. [UI-Galerie und Aufnahmestand](docs/SCREENSHOTS.md).*
+
+![Echte Dokumentrelevanz-Ansicht in Zotero](docs/assets/screenshots/document-overview-example.png)
+
+*Echter Ausschnitt des Dokumentrelevanz-Diagramms aus Zotero.*
 
 [Alle Funktionen](docs/FEATURES.md) · [Installation](docs/INSTALLATION.md) · [Abläufe](docs/WORKFLOWS.md) · [Architektur](docs/ARCHITECTURE.md) · [Teststand & Grenzen](docs/STATUS.md) · [English](README.en.md)
 
@@ -37,7 +41,7 @@ Die Erweiterung verbindet die Suche mit deinem Literatur-Workflow: **Frage → O
 
 Voraussetzungen: **Zotero 10 unter Windows x64**, lokal verfügbare PDFs mit extrahierbarem Text und Platz für Laufzeit und Modellgewichte. Python und die benötigten Bibliotheken sind in der Release-XPI enthalten.
 
-1. Die Datei **Zitatlotse-0.27.0.xpi** aus den [Release-Downloads](https://github.com/Cuzimnero/zitatlotse/releases) herunterladen. Das öffentliche Release ist derzeit noch in Vorbereitung.
+1. Die Datei **Zitatlotse-0.27.0.xpi** [direkt herunterladen](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi). Der Link wird verfügbar, sobald das öffentliche Release freigegeben ist; es ist noch nicht veröffentlicht.
 2. In Zotero unter **Werkzeuge → Add-ons → Add-on aus Datei installieren** die XPI wählen und Zotero neu starten.
 3. Zotero richtet den lokalen Suchdienst aus dem enthaltenen Paket automatisch ein. Das Suchfenster zeigt den Einrichtungsfortschritt. Kein zusätzlicher Installer, keine eigene Python-Installation und kein manueller Dienststart sind nötig.
 4. Eine PDF oder einen Literatur-Eintrag auswählen und rechts **Diese PDF verarbeiten** beziehungsweise **Diesen Eintrag verarbeiten** anklicken. Beim ersten Verarbeiten werden die gewählten Suchmodelle heruntergeladen; dafür ist Internet nötig. Mit **Alle neuen/geänderten PDFs verarbeiten** die Bibliothek ergänzen.
