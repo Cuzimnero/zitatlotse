@@ -9,10 +9,21 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
 node test_search_session.js
-python package.py
+node test_runtime.js
+python package.py --source-only
 ```
 
 Diese Tests nutzen temporäre/synthetische Daten, simulierte Encoder oder Anbieterantworten. Sie prüfen Logik und Fehlerfälle, nicht die tatsächliche Qualität eines Modells. Node.js wird für die Plugin-Tests benötigt. Die Windows-CI führt dieselben Prüfungen aus und lädt keine Modellgewichte. Ein vorab veröffentlichter CI-Erfolg ist damit noch nicht vorhanden.
+
+## XPI-Einrichtung auf einem PC ohne Python im Suchpfad
+
+```powershell
+python build_runtime.py
+python package.py
+.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.27.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
+```
+
+Die Prüfung richtet die enthaltene Laufzeit in einem separaten Testordner ein, entfernt Python aus dem Suchpfad und verbietet Modell-Downloads. Sie prüft reale Dienstverfügbarkeit, Fortschritt, vollständigen Prozessverlust mit erneutem Start und Erhalt der Testdatenbank. Sie berührt die normale Installation auf Port 8765 nicht und führt keine Cloud-Abfrage aus. Ein tatsächlicher OS-Neustart wird damit nicht ausgeführt.
 
 ## 2. Echte lokale Modelle mit synthetischen PDFs
 

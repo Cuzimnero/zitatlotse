@@ -186,7 +186,7 @@ function setup(libraryIDs = [7, 8]) {
                 }
                 return {responseText: JSON.stringify(savedSettings)};
             }
-            return {responseText: JSON.stringify(url.endsWith("/health") ? {ok: true, models_cached: true}
+            return {responseText: JSON.stringify(url.endsWith("/health") ? {ok: true, service:"zitatlotse", models_cached: true}
                 : url.includes("/status") ? {documents: 1, chunks: 2, topic_documents: 1} : {results: []})};
         }},
     }});
@@ -205,7 +205,7 @@ const hit = (quote, library = 7) => ({library_id: library, quote, title: "Paper"
 const response = (quote, extra = {}) => ({reply: "Antwort mit Beleg [1]", used_ai: true,
     queries: {en: "evidence of overfitting"}, results: [hit(quote)], search_id: "search-1",
     next_offset: 1, has_more: true, ...extra});
-const flush = async () => {for (let i = 0; i < 8; i++) await Promise.resolve();};
+const flush = async () => {for (let i = 0; i < 24; i++) await Promise.resolve();};
 
 function previewHTML(doc) {
     const escape = text => String(text ?? "").replace(/[&<>\"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);

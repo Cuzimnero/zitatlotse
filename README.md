@@ -6,11 +6,11 @@
 
 Zitatlotse durchsucht deine PDF-Bibliothek, findet zitierbare Originalstellen und hilft dabei, Aussagen mit Pro- und Kontra-Belegen zu prüfen. Du entscheidest, welches Embedding-Modell und welcher KI-Anbieter verwendet werden. Mit Ollama bleiben auch die KI-Aufrufe lokal.
 
-**Zotero 10 · Windows · Version 0.26.3 · Experimenteller Prototyp · MIT für den eigenen Quellcode**
+**Zotero 10 · Windows x64 · Version 0.27.0 · Experimenteller Prototyp · MIT für den eigenen Quellcode**
 
-![Zitatlotse: lokale Suche, Originalzitate und Pro-/Kontra-Belege](docs/assets/cover.png)
+![Echter KI-Chat in Zotero](docs/assets/screenshots/ai-chat-example.png)
 
-*Die Grafik illustriert den Arbeitsablauf; sie ist kein Screenshot der Erweiterung.*
+*Ausschnitt einer echten, zuvor aufgenommenen Zotero-Ansicht. [UI-Galerie und Aufnahmestand](docs/SCREENSHOTS.md).* 
 
 [Alle Funktionen](docs/FEATURES.md) · [Installation](docs/INSTALLATION.md) · [Abläufe](docs/WORKFLOWS.md) · [Architektur](docs/ARCHITECTURE.md) · [Teststand & Grenzen](docs/STATUS.md) · [English](README.en.md)
 
@@ -35,26 +35,15 @@ Die Erweiterung verbindet die Suche mit deinem Literatur-Workflow: **Frage → O
 
 ## Schnellstart unter Windows
 
-Voraussetzungen: **Zotero 10**, **Python 3.10 oder neuer**, lokal verfügbare PDFs mit extrahierbarem Text und Platz für Modellgewichte. Modelle und Python-Pakete werden bei Bedarf heruntergeladen.
+Voraussetzungen: **Zotero 10 unter Windows x64**, lokal verfügbare PDFs mit extrahierbarem Text und Platz für Laufzeit und Modellgewichte. Python und die benötigten Bibliotheken sind in der Release-XPI enthalten.
 
-1. Dieses Repository klonen oder das vollständige Quellcode-Archiv entpacken.
-2. Im Projektordner den lokalen Suchdienst installieren:
+1. Die Datei **Zitatlotse-0.27.0.xpi** aus den [Release-Downloads](https://github.com/Cuzimnero/zitatlotse/releases) herunterladen. Das öffentliche Release ist derzeit noch in Vorbereitung.
+2. In Zotero unter **Werkzeuge → Add-ons → Add-on aus Datei installieren** die XPI wählen und Zotero neu starten.
+3. Zotero richtet den lokalen Suchdienst aus dem enthaltenen Paket automatisch ein. Das Suchfenster zeigt den Einrichtungsfortschritt. Kein zusätzlicher Installer, keine eigene Python-Installation und kein manueller Dienststart sind nötig.
+4. Eine PDF oder einen Literatur-Eintrag auswählen und rechts **Diese PDF verarbeiten** beziehungsweise **Diesen Eintrag verarbeiten** anklicken. Beim ersten Verarbeiten werden die gewählten Suchmodelle heruntergeladen; dafür ist Internet nötig. Mit **Alle neuen/geänderten PDFs verarbeiten** die Bibliothek ergänzen.
+5. Das violette Zitatlotse-Symbol anklicken. Bibliothek und gegebenenfalls Sammlung wählen; direkt suchen oder unter **Verbindungen** einen KI-Anbieter einrichten.
 
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Zitatlotse.ps1
-   ```
-
-3. Die Erweiterungsdatei bauen:
-
-   ```powershell
-   python package.py
-   ```
-
-4. In Zotero unter **Werkzeuge → Add-ons → Add-on aus Datei installieren** die Datei `dist\Zitatlotse-0.26.3.xpi` wählen und Zotero neu starten.
-5. Eine PDF oder einen Literatur-Eintrag auswählen und rechts **Diese PDF verarbeiten** beziehungsweise **Diesen Eintrag verarbeiten** anklicken. Mit **Alle neuen/geänderten PDFs verarbeiten** die Bibliothek ergänzen.
-6. Das violette Zitatlotse-Symbol anklicken. Bibliothek und gegebenenfalls Sammlung wählen; direkt suchen oder unter **Verbindungen** einen KI-Anbieter einrichten.
-
-Bei vorhandenen Release-Dateien kann Schritt 3 durch die bereitgestellte XPI ersetzt werden. Ausführliche Hinweise zu Updates, Modellcache und Fehlerdiagnose stehen in der [Installationsanleitung](docs/INSTALLATION.md).
+Die XPI ist durch die enthaltene CPU-Laufzeit größer als ein reines Oberflächen-Add-on. Ausführliche Hinweise zu Updates, Modellcache und Fehlerdiagnose stehen in der [Installationsanleitung](docs/INSTALLATION.md).
 
 ## So funktioniert die Suche
 
@@ -97,7 +86,7 @@ API-Schlüssel werden über `keyring` im Anmeldeinformationsspeicher des Betrieb
 
 **Experimenteller Prototyp mit bekannten Einschränkungen.** Die Suche und Modellwahl brauchen weitere Evaluation mit größeren und vielfältigeren Beständen.
 
-- Windows-Kaltstarts, Start aus dem Menü und Worker-Wiederanlauf wurden geprüft. **Nach vollständigem Ausfall von Supervisor und Worker erfolgte im Test innerhalb von 100 Sekunden kein automatischer Wiederanlauf durch Windows.**
+- Version 0.27.0 startet und repariert den Dienst über Zotero. Ein 30-Sekunden-Check soll auch den vollständigen Prozessverlust auffangen. Der frühere Windows-Aufgabenstart hatte hierfür eine bekannte Lücke; ein echter PC-Neustart bleibt separat zu prüfen.
 - Die erste echte Suche nach einem Prozessneustart dauerte im lokalen Test etwa 83 Sekunden. Ein erreichbarer Dienst bedeutet nicht, dass die Modelle schon geladen sind.
 - Der Vektorvergleich ist ein exakter Scan; noch kein ANN-Index für sehr große Bibliotheken.
 - Gescannte PDFs benötigen vorher OCR. PDF-Seiten und gedruckte Seitenzahlen können voneinander abweichen.
@@ -114,6 +103,8 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
 node test_search_session.js
+node test_runtime.js
+python build_runtime.py
 python package.py
 ```
 

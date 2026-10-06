@@ -86,9 +86,9 @@ Ein neues Modell oder eine neue Eingabekonfiguration braucht neue Chunk- und The
 
 ## Start unter Windows
 
-Der Installer legt die Umgebung unter `%USERPROFILE%\.zitatlotse` an. Zotero startet bei Bedarf den absoluten Python-/Launcher-Pfad direkt. Der Launcher verhindert parallele Supervisoren über eine Betriebssystem-Dateisperre und startet den Such-Worker mit begrenzter ansteigender Wartezeit erneut.
+Die Release-XPI enthält die eingebettete Windows-x64-Python-Laufzeit, CPU-Bibliotheken, Backend und `runtime/setup.ps1`. Zotero entpackt das Paket unter `%USERPROFILE%\.zitatlotse`, prüft SHA-256 und Imports und startet den absoluten Python-/Launcher-Pfad automatisch. Der Launcher verhindert parallele Supervisoren über eine Betriebssystem-Dateisperre und startet den Such-Worker mit begrenzter ansteigender Wartezeit erneut.
 
-Die Windows-Aufgabe startet den Supervisor nach Benutzeranmeldung. Der Verlust des gesamten Prozessbaums wird derzeit nicht zuverlässig automatisch behoben; siehe [Status](STATUS.md). HTTP-Verfügbarkeit und vollständige Modellbereitschaft sind zwei verschiedene Zustände.
+Zotero startet beim Laden des Add-ons, beim Öffnen des Fensters sowie bei Verbindungsverlust. Ein 30-Sekunden-Check fängt auch den Verlust des gesamten Prozessbaums auf. Die normale XPI-Installation braucht keine Windows-Aufgabe und kein installiertes Python. HTTP-Verfügbarkeit und vollständige Modellbereitschaft sind zwei verschiedene Zustände. Ablauf und Tests: [Installation](INSTALLATION.md), [Status](STATUS.md).
 
 ## Skalierung
 

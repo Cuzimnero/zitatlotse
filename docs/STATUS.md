@@ -2,7 +2,21 @@
 
 [Zur Projektseite](../README.md)
 
-**Stand: 6. Oktober 2026 · Version 0.26.3 · experimenteller Prototyp**
+**Stand: 6. Oktober 2026 · Version 0.27.0 · experimenteller Prototyp**
+
+## Neue normale XPI-Installation
+
+- Offizielle eingebettete Python-3.13.16-Laufzeit, CPU-PyTorch und Backend vollständig in der XPI.
+- Reale Einrichtung aus dem XPI-Archiv in einem separaten Testordner, mit Python aus dem Suchpfad entfernt und Modell-Downloads deaktiviert: erfolgreich.
+- Health-Check des tatsächlich gestarteten Dienstes, leere Bibliothek und Fortschrittsabschluss: erfolgreich.
+- Vollständiger Verlust von Supervisor und Worker, erneuter Start aus demselben Paket, Datenbank und zusätzliche Testdatei erhalten: erfolgreich.
+- Simulierter Zotero-Start: Erstinstallation, gecachte Laufzeit, ältere Dienstversion, parallele Anfragen, Fehler mit erneutem Versuch und fremder Prozess auf dem Port: erfolgreich.
+- 104 Backend-Tests unter der neu enthaltenen Python-Laufzeit: erfolgreich; Plugin- und Sitzungsprüfungen ebenfalls erfolgreich.
+- Echte E5-/BERTScore-Prüfung mit einem synthetischen PDF: Verarbeitung, positiver Treffer, Fundort und Bibliotheksgrenze liefen erfolgreich. Ein fachfremder Negativfall liefert dabei einen Treffer. Derselbe Fehler tritt auch mit der bisherigen Laufzeit auf; die neue Installation behebt diese vorhandene Relevanzschwäche nicht. Die vollständige Modell-Smoke-Prüfung gilt damit als fehlgeschlagen.
+
+Zotero übernimmt Start und Einrichtung und prüft den Dienst alle 30 Sekunden. Eine separate Python-Installation, ein manuell gestarteter Dienst oder eine Windows-Aufgabe gehören nicht zum neuen Standardweg.
+
+Ein tatsächlicher PC-Neustart und die vollständige Erstinstallation über den nativen Zotero-Add-on-Manager sind durch diese isolierten Tests noch nicht bestätigt. Die folgenden Startmessungen betreffen den vorherigen Stand 0.26.3.
 
 ## Was geprüft wurde
 
@@ -16,7 +30,7 @@
 
 Die isolierten Tests verwenden teilweise simulierte Vektoren und Anbieterantworten. Sie messen keine reale Retrieval-Qualität. Die simulierte Zotero-Umgebung ersetzt keine manuelle Prüfung im nativen Client. Die vorbereitete GitHub-Actions-Datei ist vor Veröffentlichung noch nicht auf GitHub ausgeführt worden.
 
-## Windows-Kaltstart- und Ausfallprüfung
+## Frühere Windows-Kaltstart- und Ausfallprüfung (0.26.3)
 
 Die Tests beendeten nur die installierten Zitatlotse-Prozesse, starteten die Windows-Aufgabe oder die ausgelieferte Menü-Startfunktion und prüften tatsächliche HTTP-Verfügbarkeit.
 
@@ -49,7 +63,7 @@ Die erste Anfrage enthält Modellinitialisierung und Suche; diese Zeiten wurden 
 
 ## Bekannte Grenzen
 
-- **Dienstverlust:** unabhängigen Wiederanlauf des Supervisors verbessern und echte Boot-Tests ergänzen.
+- **Dienstverlust:** neuen Zotero-Wiederanlauf bei realem Booten und über längere Sitzungen prüfen.
 - **Kaltstart:** sichtbarer Modellladezustand und gezieltes Vorladen können die erste Suche verständlicher machen.
 - **Retrieval:** Schwellenwerte hängen von Modell, Sprache und Query ab. Es gibt bisher keinen breiten Recall-/Precision-Benchmark.
 - **Große Bestände:** linearer exakter Cosinus-Scan, zusätzlicher BERTScore-Aufwand, kein ANN-Index.
@@ -60,7 +74,7 @@ Die erste Anfrage enthält Modellinitialisierung und Suche; diese Zeiten wurden 
 - **Oberfläche:** native Prüfung im kleinen Zotero-Fenster, Dropdowns, Reader-Navigation und Animationen bleibt erforderlich.
 - **Installation:** vollständiger Windows-Weg; andere Plattformen nicht als fertige Distribution geprüft.
 - **Updates:** kein automatisches Add-on-Update.
-- **Reproduzierbarkeit:** Abhängigkeiten haben Versionsbereiche; ein vollständiger, plattformbezogener Release-Lock fehlt noch.
+- **Reproduzierbarkeit:** Release-Laufzeit enthält die exakten Paketversionen in `PACKAGES.json`; Änderungen am Laufzeit-Build separat erneut prüfen.
 
 ## Sinnvolle nächste Schritte
 

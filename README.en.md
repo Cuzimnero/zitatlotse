@@ -4,9 +4,9 @@
 
 An experimental Zotero 10 add-on for finding original PDF passages, checking claims against supporting and opposing evidence, and keeping quotations with notes and citation styles.
 
-![Local retrieval and evidence workflow](docs/assets/cover.png)
+![Actual AI chat in Zotero](docs/assets/screenshots/ai-chat-example.png)
 
-*Workflow illustration, not an application screenshot.*
+*Crop of an actual previously captured Zotero view. [Screenshot gallery and capture status](docs/SCREENSHOTS.md).* 
 
 ## Features
 
@@ -25,18 +25,15 @@ An experimental Zotero 10 add-on for finding original PDF passages, checking cla
 
 ## Install on Windows
 
-Requires Zotero 10, Python 3.10+, locally available text PDFs, and disk space for models.
+Requires Zotero 10 on Windows x64, locally available text PDFs, and disk space for the bundled runtime and models.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-Zitatlotse.ps1
-python package.py
-```
+Download **Zitatlotse-0.27.0.xpi** from the [release page](https://github.com/Cuzimnero/zitatlotse/releases) (public release currently in preparation), install it through Zotero's add-on manager and restart Zotero. Python, CPU libraries and backend are included. Zotero sets up and starts local search automatically with visible progress. No separate installer, Python installation or manual service launch is required.
 
-Install `dist\Zitatlotse-0.26.3.xpi` through Zotero's add-on manager and restart Zotero. Process a PDF or item, then open the purple quotation button. Cloud AI is optional. For local AI, run Ollama and select an installed model.
+Process a PDF or item, then open the purple quotation button. Search model weights download on first use. Cloud AI is optional. For local AI, run Ollama and select an installed model.
 
 ## Status and data
 
-Version **0.26.3 is experimental**. Windows cold starts, menu startup and worker recovery were tested. A complete supervisor/worker loss did **not** automatically recover through Windows within the tested 100 seconds. The first post-restart query took about 83 seconds in one local run. There is no ANN index, integrated OCR or automatic XPI update. Native Zotero UI tests and a real Windows reboot remain necessary.
+Version **0.27.0 is experimental**. Bundled-runtime setup without Python on PATH, real service availability, complete process loss/restart and database preservation were tested. Zotero starts the service and checks every 30 seconds while open. The earlier Windows-task startup had a known recovery gap. A real Windows reboot remains necessary. The first post-restart query took about 83 seconds in an earlier local run. There is no ANN index, integrated OCR or automatic XPI update.
 
 Embeddings, BERTScore and the SQLite index are local. Cloud providers receive your question and retrieved PDF passages; their API usage may cost money. Keys use the OS credential store. The local database is not encrypted by the add-on.
 

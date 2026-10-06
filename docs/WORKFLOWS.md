@@ -2,6 +2,23 @@
 
 [Zur Projektseite](../README.md) · [Technische Architektur](ARCHITECTURE.md)
 
+## Installation und Neustart
+
+```mermaid
+flowchart LR
+    A[XPI in Zotero installieren] --> B[Add-on wird geladen]
+    B --> C{Passende Laufzeit vorhanden?}
+    C -->|Nein| D[Paket prüfen und lokal entpacken]
+    D --> E[Backend aktualisieren / Daten erhalten]
+    C -->|Ja| F[Python und Launcher starten]
+    E --> F
+    F --> G[Health-Check und Fortschritt]
+    G --> H[Lokale Suche bereit]
+    H --> I[Modelle bei erster Verwendung laden]
+```
+
+Der Nutzer startet kein separates Programm. Nach einem PC-Neustart startet Zotero seinen Dienst erneut. Während Zotero geöffnet ist, prüft die Erweiterung alle 30 Sekunden den Dienst. Fehler bei der Einrichtung erscheinen im Suchfenster und können über **Suchdienst prüfen** erneut versucht werden.
+
 ## 1. Neue PDF oder Bibliothek verarbeiten
 
 ```mermaid

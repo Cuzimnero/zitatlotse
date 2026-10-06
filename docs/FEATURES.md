@@ -2,7 +2,7 @@
 
 [Zur Projektseite](../README.md)
 
-Stand: **0.26.3**. Die folgende Liste beschreibt implementierte Funktionen. Ihr Vorhandensein ist keine Zusage, dass alle Kombinationen von PDFs, Modellen und Zotero-Versionen bereits zuverlässig getestet sind. Siehe [Teststand](STATUS.md).
+Stand: **0.27.0**. Die folgende Liste beschreibt implementierte Funktionen. Ihr Vorhandensein ist keine Zusage, dass alle Kombinationen von PDFs, Modellen und Zotero-Versionen bereits zuverlässig getestet sind. Siehe [Teststand](STATUS.md).
 
 ## 1. Zotero-Oberfläche
 
@@ -177,13 +177,14 @@ Die Auswahl ist eine Liste von Vergleichskandidaten, keine Rangliste garantierte
 
 ## 14. Lokaler Dienst unter Windows
 
-- Installation unter `%USERPROFILE%\.zitatlotse` mit eigener Python-Umgebung, Modellcache und SQLite-Datei.
+- Normale XPI-Installation mit mitgeliefertem Python, CPU-Bibliotheken und Backend unter `%USERPROFILE%\.zitatlotse`.
 - Suchserver ausschließlich auf `127.0.0.1:8765` starten.
-- Start bei Benutzeranmeldung über Windows-Aufgabe; Registry-Autostart als Installationsfallback.
-- Öffnen von Zotero beziehungsweise Suchmenü kann den installierten Launcher direkt ausführen.
+- Zotero richtet die Laufzeit automatisch ein und startet sie beim Laden des Add-ons oder Öffnen des Suchfensters.
+- Sichtbarer Einrichtungsfortschritt; fehlgeschlagene Einrichtung erneut versuchen.
+- Erreichbarkeit alle 30 Sekunden prüfen, solange Zotero geöffnet ist.
 - Parallel angeforderte Starts zusammenfassen; Betriebssystem-Sperre gegen doppelte Supervisoren.
 - Such-Worker nach Absturz mit ansteigender Wartezeit neu starten.
 - Getrennte Installations- und Dienstprotokolle.
 - Index und Modelle bei Updates erhalten; bisherige Installation bei Migration als Backup lassen.
 
-**Bekannte Lücke:** Der vollständige Verlust von Supervisor und Worker wurde durch die Windows-Aufgabe im letzten Test innerhalb von 100 Sekunden nicht automatisch behoben. Details: [Status](STATUS.md).
+Der alte manuelle Installer und sein Windows-Autostart bleiben als Legacy-/Entwicklerweg vorhanden. Ein tatsächlicher Windows-Neustart ist zusätzlich zu prüfen. Details: [Status](STATUS.md).

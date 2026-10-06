@@ -12,8 +12,10 @@ import traceback
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parent
+# Embeddable Python ignores the script directory unless we include it explicitly.
+sys.path.insert(0, str(ROOT))
 DATA = ROOT / "data"
-HEALTH = "http://127.0.0.1:8765/health"
+HEALTH = "http://127.0.0.1:" + os.environ.get("ZQS_PORT", "8765") + "/health"
 
 
 def service_healthy():

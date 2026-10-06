@@ -1,0 +1,80 @@
+name: Build a draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag matching plugin/manifest.json
+        required: true
+        default: v0.27.0
+
+permissions:
+  contents: read
+
+jobs:
+  draft-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate requested version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $version = (Get-Content plugin/manifest.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -ne "v$version") { throw 'Tag must match the add-on version.' }
+      - name: Isolated tests
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-dev.txt
+          $env:ZQS_DB = Join-Path $env:RUNNER_TEMP 'release-tests.sqlite'
+          $env:HF_HUB_OFFLINE = '1'
+          python -m unittest discover -s backend -p "test_*.py"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node test_plugin.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node test_search_session.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node test_runtime.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build complete Windows runtime
+        run: python build_runtime.py
+      - name: Package XPI and public source
+        run: python package.py
+      - name: Verify real XPI setup without external Python
+        shell: pwsh
+        run: |
+          $version = (Get-Content plugin/manifest.json -Raw | ConvertFrom-Json).version
+          ./test_runtime_setup.ps1 -Xpi (Join-Path $PWD "dist/Zitatlotse-$version.xpi") -TestRoot (Join-Path $env:RUNNER_TEMP 'runtime-test') -Port 18765
+      - name: Preserve reviewable downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-downloads
+          path: |
+            dist/Zitatlotse-*.xpi
+            dist/Zitatlotse-*-source.zip
+            dist/third-party-sources.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Create unpublished GitHub release draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $version = (Get-Content plugin/manifest.json -Raw | ConvertFrom-Json).version
+          $assets = @("dist/Zitatlotse-$version.xpi", "dist/Zitatlotse-$version-source.zip", 'dist/third-party-sources.zip', 'dist/SHA256SUMS.txt')
+          gh release create $env:RELEASE_TAG @assets --target $env:GITHUB_SHA --title "Zitatlotse $version" --notes-file "docs/releases/$($env:RELEASE_TAG).md" --draft --prerelease
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

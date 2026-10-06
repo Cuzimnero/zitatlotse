@@ -34,5 +34,7 @@ jobs:
         run: node test_plugin.js
       - name: Session and result display tests
         run: node test_search_session.js
+      - name: XPI startup and provisioning tests
+        run: node test_runtime.js
       - name: Build installable add-on and source archive
-        run: python package.py
+        run: python package.py --source-only

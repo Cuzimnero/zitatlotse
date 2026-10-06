@@ -345,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             self._send(200, {"ok": True, "service": "zitatlotse", "llm": get_settings()["provider"],
-                             "version": "0.26.3",
+                             "version": "0.27.0",
                              "models_cached": MODELS_CACHED})
         elif parsed.path == "/settings":
             self._send(200, get_settings())
@@ -435,7 +435,7 @@ class LocalServer(ThreadingHTTPServer):
 def run():
     if sys.stdout:
         print("Zotero Zitatlotse: http://127.0.0.1:8765")
-    LocalServer(("127.0.0.1", 8765), Handler).serve_forever()
+    LocalServer(("127.0.0.1", int(os.environ.get("ZQS_PORT", "8765"))), Handler).serve_forever()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zitatlotse",
-  "version": "0.26.3",
+  "version": "0.27.0",
   "description": "Lokale semantische Suche nach Zitaten in Zotero-PDFs",
   "author": "Cuzimnero",
   "applications": {

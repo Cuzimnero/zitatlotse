@@ -1,6 +1,6 @@
 # Abhängigkeiten und Modelle
 
-Die MIT-Lizenz dieses Repositorys gilt für den eigenen Quellcode und die eigenen Dokumentationsgrafiken. Sie ersetzt keine Lizenz einer Abhängigkeit, eines Modells oder eines Dokuments. Pakete und Modellgewichte werden separat geladen; sie sind nicht Bestandteil des Quellcode-Archivs oder der XPI.
+Die MIT-Lizenz dieses Repositorys gilt für den eigenen Quellcode und die eigenen Dokumentationsgrafiken. Sie ersetzt keine Lizenz einer Abhängigkeit, eines Modells oder eines Dokuments. Die Windows-Release-XPI enthält Python und die benötigten CPU-Bibliotheken samt deren Lizenzdateien. Modellgewichte sind nicht enthalten und werden separat geladen.
 
 ## Bibliotheken
 
@@ -14,9 +14,9 @@ Die MIT-Lizenz dieses Repositorys gilt für den eigenen Quellcode und die eigene
 | NumPy | Vektoren und Cosinus-Vergleich | [Repository](https://github.com/numpy/numpy) |
 | keyring | Anmeldeinformationsspeicher des Betriebssystems | [Repository](https://github.com/jaraco/keyring) |
 
-**PyMuPDF und MuPDF stehen unter AGPL oder kommerziellen Lizenzbedingungen.** Diese Bedingungen sind bei Verwendung und Weitergabe der Gesamtanwendung zu beachten. Die Veröffentlichung des eigenen Quellcodes unter MIT ist keine Zusage, dass das gesamte Abhängigkeitspaket ausschließlich MIT ist. Dieses Repository liefert keine Kopie dieser Pakete mit.
+**PyMuPDF und MuPDF stehen unter AGPL oder kommerziellen Lizenzbedingungen.** Die freie Distribution verwendet die AGPL-Ausgaben. Deren Lizenztexte liegen in der enthaltenen Laufzeit; der entsprechende unveränderte Quellcode wird zusätzlich als Release-Asset bereitgestellt. Die MIT-Freigabe des eigenen Codes schränkt die Rechte und Pflichten aus der AGPL nicht ein. Die komplette Distribution ist deshalb kein ausschließlich unter MIT stehendes Paket.
 
-Die tatsächlich installierten Paketversionen hängen von `backend/requirements.txt` ab. Für eine fertige Distribution müssen deren Lizenzdateien und gegebenenfalls die transitiven Abhängigkeiten berücksichtigt werden.
+Die exakten Versionen des mitgelieferten Pakets stehen in `PACKAGES.json` innerhalb von `runtime/python.zip`. Die Lizenztexte und Copyright-Hinweise der transitiven Abhängigkeiten bleiben in `Lib/site-packages/*dist-info/licenses` beziehungsweise den jeweiligen `LICENSE`-Dateien erhalten. Der Quellcode-Build referenziert `backend/requirements.txt`; neue Laufzeit-Builds separat prüfen.
 
 ## Modelle
 

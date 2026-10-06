@@ -1,5 +1,9 @@
 const PLUGIN_ID = "quote-search@local.example";
-const BASE = "http://127.0.0.1:8765";
+// A local-only port override is useful for isolated test profiles.
+const configuredServicePort = Number(Zotero.Prefs?.get?.("extensions.zitatlotse.localPort", true));
+const SERVICE_PORT = Number.isInteger(configuredServicePort) && configuredServicePort >= 1024 && configuredServicePort <= 65535
+    ? configuredServicePort : 8765;
+const BASE = "http://127.0.0.1:" + SERVICE_PORT;
 const MODEL_SUGGESTIONS = {
     openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-5-mini"],
     anthropic: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-haiku-4-5-20251001"],
@@ -11,6 +15,11 @@ let observerID;
 let pluginRoot;
 let serviceLaunchPromise;
 let serviceProcess;
+let runtimeMetadataPromise;
+let serviceHeartbeat;
+let serviceStopping = false;
+let runtimeState = {phase:"checking", percent:0, error:""};
+const runtimeListeners = new Set();
 let lastPanelCloseAt = 0;
 let knownEmbeddingModel = "";
 let showAIActivity = true;
@@ -114,12 +123,131 @@ function isConnectionFailure(error) {
         .test(message);
 }
 
+function updateRuntimeState(state) {
+    runtimeState = {...runtimeState, ...state};
+    for (let listener of runtimeListeners) listener(runtimeState);
+}
+
+function runtimeMessage(state) {
+    const messages = {
+        checking: ui("Lokale Laufzeit wird geprüft …", "Checking local runtime…"),
+        extracting: ui("Lokaler Suchdienst wird eingerichtet …", "Setting up local search…"),
+        verifying: ui("Lokale Laufzeit wird überprüft …", "Verifying local runtime…"),
+        starting: ui("Lokaler Suchdienst startet …", "Starting local search…"),
+        ready: ui("Lokaler Suchdienst ist bereit.", "Local search is ready."),
+        failed: ui("Einrichtung fehlgeschlagen: ", "Setup failed: ") + (state.error || ""),
+    };
+    return messages[state.phase] || messages.checking;
+}
+
+async function readBundledText(relativePath) {
+    let url = pluginRoot + relativePath;
+    // Zotero.File.getContentsAsync(jar:...) returns an HTTP response object,
+    // while file: URLs return text. Read packed XPIs explicitly via HTTP.
+    if (pluginRoot.startsWith("jar:")) {
+        let response = await Zotero.HTTP.request("GET", url, {timeout:30000, responseType:"text"});
+        return response.responseText;
+    }
+    return Zotero.File.getContentsAsync(url);
+}
+
+async function bundledRuntimeMetadata() {
+    // Unpacked developer/test builds can still use an existing installation.
+    if (!pluginRoot) return null;
+    if (!runtimeMetadataPromise) runtimeMetadataPromise = (async () => {
+        let data = JSON.parse(await readBundledText("runtime/manifest.json"));
+        if (data.platform !== "win-x64" || !/^[a-f0-9]{64}$/.test(data.runtime_sha256) ||
+            !/^[a-f0-9]{64}$/.test(data.backend_sha256) || !/^\d+\.\d+\.\d+$/.test(data.version))
+            throw new Error("Invalid bundled runtime manifest");
+        return data;
+    })();
+    return runtimeMetadataPromise;
+}
+
+function localFile(path) {
+    let file = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsIFile);
+    file.initWithPath(path);
+    return file;
+}
+
+function launchProcess(executable, args, observer = {observe() {}}) {
+    let process = Components.classes["@mozilla.org/process/util;1"].createInstance(Components.interfaces.nsIProcess);
+    process.init(executable);
+    process.runwAsync(args, args.length, observer);
+    return process;
+}
+
+async function readServiceHealth() {
+    let response = await Zotero.HTTP.request("GET", BASE + "/health", {timeout:1500});
+    let health = JSON.parse(response.responseText);
+    if (health.ok !== true || health.service !== "zitatlotse") {
+        let error = new Error(ui("Port 8765 wird von einem anderen Programm verwendet.", "Port 8765 is used by another application."));
+        error.status = 409;
+        throw error;
+    }
+    return health;
+}
+
+async function prepareBundledRuntime(metadata, environment) {
+    environment.set?.("ZQS_PORT", String(SERVICE_PORT));
+    let root = PathUtils.join(environment.get("USERPROFILE"), ".zitatlotse");
+    await IOUtils.makeDirectory(root, {ignoreExisting:true});
+    let statusPath = PathUtils.join(root, "setup-state-" + metadata.version + ".json");
+    let setupPath = PathUtils.join(root, "setup-" + metadata.version + ".ps1");
+    let marker;
+    try { marker = await IOUtils.readJSON(PathUtils.join(root, "installation.json")); } catch (_) {}
+    let expectedExecutable = PathUtils.join(root, "runtime", metadata.runtime_sha256.slice(0,16), "pythonw.exe");
+    let expectedLauncher = PathUtils.join(root, "backend", "launcher.py");
+    if (marker?.runtime_sha256 === metadata.runtime_sha256 && marker?.backend_sha256 === metadata.backend_sha256 &&
+        marker.executable?.toLowerCase() === expectedExecutable.toLowerCase() &&
+        marker.launcher?.toLowerCase() === expectedLauncher.toLowerCase() &&
+        await IOUtils.exists(marker.executable) && await IOUtils.exists(marker.launcher)) {
+        updateRuntimeState({phase:"starting", percent:90, error:""});
+        serviceProcess = launchProcess(localFile(marker.executable), [marker.launcher, "--supervise"]);
+        return;
+    }
+    await IOUtils.writeUTF8(setupPath, await readBundledText("runtime/setup.ps1"));
+    await IOUtils.writeJSON(statusPath, {phase:"extracting", percent:2, error:""});
+    let uri = Services.io.newURI(pluginRoot);
+    let addonPath = uri.scheme === "jar"
+        ? uri.QueryInterface(Components.interfaces.nsIJARURI).JARFile.QueryInterface(Components.interfaces.nsIFileURL).file.path
+        : uri.QueryInterface(Components.interfaces.nsIFileURL).file.path;
+    let powershell = localFile(PathUtils.join(environment.get("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
+    let done = false, exitCode;
+    serviceProcess = launchProcess(powershell, ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+        "-ExecutionPolicy", "Bypass", "-File", setupPath, "-AddonPath", addonPath,
+        "-InstallRoot", root, "-StatusPath", statusPath, "-Port", String(SERVICE_PORT)], {observe(subject, topic) {
+            done = true;
+            exitCode = topic === "process-finished" ? (subject.QueryInterface?.(Components.interfaces.nsIProcess) || subject).exitValue : -1;
+        }});
+    for (let attempt = 0; attempt < 1200; attempt++) {
+        if (serviceStopping) return;
+        await new Promise(resolve => setTimeout(resolve, 500));
+        let state;
+        try { state = await IOUtils.readJSON(statusPath); } catch (_) {}
+        if (state) updateRuntimeState(state);
+        if (state?.phase === "failed") throw new Error(state.error);
+        if (done) {
+            if (exitCode !== 0) throw new Error(state?.error || ui(
+                "Die lokale Einrichtung konnte nicht abgeschlossen werden. Bitte „Suchdienst prüfen“ erneut wählen.",
+                "Local setup could not complete. Select ‘Check service’ to retry."));
+            return;
+        }
+    }
+    throw new Error(ui("Die lokale Einrichtung dauert zu lange. Bitte „Suchdienst prüfen“ erneut wählen.",
+        "Local setup timed out. Select ‘Check service’ to retry."));
+}
+
 async function ensureLocalService() {
     if (serviceLaunchPromise) return serviceLaunchPromise;
     serviceLaunchPromise = (async () => {
+        let metadata = await bundledRuntimeMetadata();
         try {
-            await Zotero.HTTP.request("GET", BASE + "/health", {timeout: 1500});
-            return;
+            let health = await readServiceHealth();
+            if (!metadata || health.version === metadata.version) {
+                updateRuntimeState({phase:"ready", percent:100, error:""});
+                return;
+            }
         } catch (error) {
             if (!isConnectionFailure(error)) throw error;
         }
@@ -128,6 +256,8 @@ async function ensureLocalService() {
             "Automatic startup is currently supported on Windows only."));
         let environment = Components.classes["@mozilla.org/process/environment;1"]
             .getService(Components.interfaces.nsIEnvironment);
+        if (metadata) await prepareBundledRuntime(metadata, environment);
+        else {
         let roots = [[environment.get("USERPROFILE"), ".zitatlotse"],
             [environment.get("LOCALAPPDATA"), "Zitatlotse"]];
         let executable, launcher;
@@ -144,16 +274,16 @@ async function ensureLocalService() {
         if (!executable || !launcher) throw new Error(ui(
             "Der lokale Suchdienst ist nicht vollständig installiert. Bitte Install-Zitatlotse.ps1 ausführen.",
             "The local search service is not fully installed. Please run Install-Zitatlotse.ps1."));
-        serviceProcess = Components.classes["@mozilla.org/process/util;1"]
-            .createInstance(Components.interfaces.nsIProcess);
-        serviceProcess.init(executable);
-        let arguments = [launcher.path, "--supervise"];
-        serviceProcess.runwAsync(arguments, arguments.length, {observe() {}});
+        serviceProcess = launchProcess(executable, [launcher.path, "--supervise"]);
+        }
         for (let attempt = 0; attempt < 120; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 500));
             try {
-                await Zotero.HTTP.request("GET", BASE + "/health", {timeout: 1500});
-                return;
+                let health = await readServiceHealth();
+                if (!metadata || health.version === metadata.version) {
+                    updateRuntimeState({phase:"ready", percent:100, error:""});
+                    return;
+                }
             } catch (error) {
                 if (!isConnectionFailure(error)) throw error;
             }
@@ -164,6 +294,7 @@ async function ensureLocalService() {
     })();
     try { return await serviceLaunchPromise; }
     catch (error) {
+        updateRuntimeState({phase:"failed", percent:0, error:error?.message || String(error)});
         let detail = new Error(error?.message || String(error));
         detail.zitatlotseStartupError = true;
         throw detail;
@@ -172,6 +303,8 @@ async function ensureLocalService() {
 }
 
 async function serviceRequest(method, path, options) {
+    // Wait for first-install/update preparation even if an older worker still responds.
+    if (serviceLaunchPromise) await serviceLaunchPromise;
     try {
         return await Zotero.HTTP.request(method, BASE + path, options);
     } catch (error) {
@@ -711,6 +844,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         if (overlay.zitatlotseClosing) return;
         clearTimeout(embeddingTimer);
         searchSessionListeners.delete(onSessionChange);
+        runtimeListeners.delete(onRuntimeChange);
         doc.removeEventListener("pointerdown", outsidePress, true);
         dismissSearchWindow(doc, overlay, escapeHandler, shell, true);
     };
@@ -780,6 +914,14 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let serviceState = add(main, "p", ui("Lokaler Suchdienst wird geprüft …", "Checking local search service…"),
         "padding:10px;border-radius:6px;background:#eeeafa;white-space:normal;");
     let serviceProgress = makeProgress(main);
+    function onRuntimeChange(state) {
+        serviceState.textContent = runtimeMessage(state);
+        if (["ready", "failed"].includes(state.phase)) serviceProgress.stop();
+        else { serviceProgress.start(); serviceProgress.update(state.percent || 0, 100); }
+        serviceState.style.background = state.phase === "failed" ? "#fff0dc" : state.phase === "ready" ? "#e8f5ea" : "#eeeafa";
+    }
+    runtimeListeners.add(onRuntimeChange);
+    onRuntimeChange(runtimeState);
     let indexState = add(main, "p", ui("Indexstand wird geladen …", "Loading index status…"),
         "color:#615d6c;");
     let indexStatusProgress = makeProgress(main);
@@ -1441,9 +1583,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                     "Local service is running. Models will download during first processing; internet is required.")
                 : ui("Lokaler Suchdienst und Modelle sind bereit.", "Local search service and models are ready.");
             serviceState.style.background = "#e8f5ea";
-        } catch {
-            serviceState.textContent = ui("Lokaler Suchdienst ist nicht erreichbar. Install-Zitatlotse.ps1 aus dem Quellcode-Archiv ausführen und danach „Suchdienst prüfen“ anklicken.",
-                "Local service is unavailable. Run Install-Zitatlotse.ps1 from the source archive, then click ‘Check service’. ");
+        } catch (error) {
+            serviceState.textContent = runtimeMessage({phase:"failed", error:error.message});
             serviceState.style.background = "#fff0dc";
         } finally { serviceProgress.stop(); }
     });
@@ -2196,7 +2337,12 @@ function renderSection({ body, item }) {
 
 function startup({ rootURI }) {
     pluginRoot = rootURI;
+    serviceStopping = false;
     ensureLocalService().catch(error => Zotero.logError(error));
+    // Recover after a full supervisor loss while Zotero remains open.
+    serviceHeartbeat = setInterval(() => {
+        if (!serviceStopping && runtimeState.phase !== "failed") ensureLocalService().catch(error => Zotero.logError(error));
+    }, 30000);
     for (let win of Zotero.getMainWindows()) onMainWindowLoad({ window: win });
     registeredSection = Zotero.ItemPaneManager.registerSection({
         paneID: "quote-search-section",
@@ -2234,6 +2380,9 @@ function startup({ rootURI }) {
 }
 
 function shutdown() {
+    serviceStopping = true;
+    if (serviceHeartbeat) clearInterval(serviceHeartbeat);
+    runtimeListeners.clear();
     searchSessions.clear();
     searchSessionListeners.clear();
     if (observerID) Zotero.Notifier.unregisterObserver(observerID);

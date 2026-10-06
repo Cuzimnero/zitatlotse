@@ -311,7 +311,7 @@ const realOpenSearchWindow = vm.runInContext("openSearchWindow", context);
                     throw error;
                 }
                 return {responseText: JSON.stringify(url.endsWith("/health") ?
-                    {ok: true} : {documents: 2})};
+                    {ok: true, service:"zitatlotse"} : {documents: 2})};
             }},
         },
         Components: {
