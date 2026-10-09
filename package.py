@@ -10,7 +10,7 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 ROOT = Path(__file__).resolve().parent
 TOP_LEVEL = (
-    "README.md", "README.en.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
+    "README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
     "SECURITY.md", ".gitignore", ".gitattributes", "package.py",
     "requirements-dev.txt", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
     "test_plugin.js", "test_search_session.js", "smoke_service_start.js",
@@ -59,7 +59,8 @@ def main():
         backend_zip = args.output / "backend-payload.zip"
         with ZipFile(backend_zip, "w", ZIP_DEFLATED) as archive:
             for file in sorted((ROOT / "backend").glob("*.py")):
-                if not file.name.startswith("test_"):
+                # Diagnostics and model/provider smoke tests belong in the source archive.
+                if not file.name.startswith(("test_", "smoke_", "diagnose_")):
                     archive.write(file, file.name)
             archive.write(ROOT / "backend" / "requirements.txt", "requirements.txt")
             archive.write(ROOT / "LICENSE", "LICENSE")

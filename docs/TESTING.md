@@ -13,7 +13,7 @@ node test_runtime.js
 python package.py --source-only
 ```
 
-These tests use temporary/synthetic data and simulated encoders or provider responses. They test logic and failure cases, not real model quality. Node.js is required for plugin tests. Windows CI runs the same checks and does not download model weights. No CI result has been published in advance.
+These tests use temporary/synthetic data and simulated encoders or provider responses. They test logic and failure cases, not real model quality. Node.js is required for plugin tests. Windows CI runs the same checks and does not download model weights. See the [test status](STATUS.md) for verified runs.
 
 ## Set up the XPI without Python on `PATH`
 

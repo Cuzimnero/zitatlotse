@@ -15,7 +15,7 @@ The repository and the first experimental release are **public**. No GitHub acco
 
 For normal use, you only need the **XPI**. Source archives are provided for development, review and license compliance.
 
-Download [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or open the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0) for the source archives and checksums. The versioned source archive records the original release snapshot; the main branch contains subsequent documentation and CI dependency updates.
+Download [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or open the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0) for the source archives and checksums. The downloadable archives include subsequent documentation, CI dependency and packaging cleanup updates. The original tagged snapshot remains available through GitHub's generated source downloads. Application behavior is unchanged by the cleanup; developer diagnostics remain in the maintained source archive and are excluded from the installed backend.
 
 ## Publishing
 

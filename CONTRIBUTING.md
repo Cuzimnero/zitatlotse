@@ -10,10 +10,11 @@ python -m venv .venv
 .venv\Scripts\python.exe -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
 node test_search_session.js
-python package.py
+node test_runtime.js
+python package.py --source-only
 ```
 
-For actual model inference, use `backend/requirements.txt`. For Zotero, run the Windows installer. See the [testing guide](docs/TESTING.md).
+For actual model inference, use `backend/requirements.txt`. For Zotero, install the release XPI through its add-on manager. Building a complete XPI requires `python build_runtime.py` followed by `python package.py`. See the [testing guide](docs/TESTING.md).
 
 ## Verify search changes
 
