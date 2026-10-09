@@ -8,13 +8,9 @@ Zitatlotse searches your PDF library for original passages and helps you check c
 
 **Zotero 10 · Windows x64 · Version 0.27.0 · Experimental prototype · MIT for original project code**
 
-![Actual AI chat in Zotero](docs/assets/screenshots/ai-chat-example.png)
+![AI Search in the running Zotero add-on, with library statistics hidden](docs/assets/screenshots/ai-search.png)
 
-*A genuine crop from Zotero. These screenshots show an earlier UI version; a fresh full set for 0.27.0 is still pending. See the [UI gallery and capture status](docs/SCREENSHOTS.md).*
-
-![Actual document relevance view in Zotero](docs/assets/screenshots/document-overview-example.png)
-
-*A genuine crop of the document relevance chart in Zotero.*
+**Actual Zotero UI:** See [all menus in the screenshot gallery](docs/SCREENSHOTS.md): AI Search, evidence mode, Direct Search, Saved Quotes, Connections and Settings, including custom Hugging Face models. These are captures of the installed add-on in Zotero, cropped and redacted for privacy. The captured interface follows Zotero's German locale; this documentation is in English.
 
 [Features](docs/FEATURES.md) · [Installation](docs/INSTALLATION.md) · [Workflows](docs/WORKFLOWS.md) · [Architecture](docs/ARCHITECTURE.md) · [Test status and limitations](docs/STATUS.md) · [Data and privacy](docs/DATA.md)
 
@@ -41,7 +37,7 @@ The workflow connects research to the source: **question → original evidence �
 
 Requirements: **Zotero 10 on Windows x64**, locally available PDFs with extractable text, and enough disk space for the runtime and model weights. The release XPI includes Python and the required libraries.
 
-1. Download **Zitatlotse-0.27.0.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi). This link will work after the public release is approved; it has not been published yet.
+1. Download **Zitatlotse-0.27.0.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or from the [test release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0). The repository and release are private; sign in with a GitHub account that has access.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File**, select the XPI and restart Zotero.
 3. Zotero sets up the bundled local search service and shows setup progress. No separate installer, Python installation or manual service launch is needed.
 4. Select a PDF or library item and choose **Process this PDF** or **Process this item** in the right sidebar. On first use, the selected search models are downloaded. Choose **Process all new or changed PDFs** to index the library.

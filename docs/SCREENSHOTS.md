@@ -2,18 +2,58 @@
 
 [Project page](../README.md)
 
-These images are genuine crops from Zotero screenshots shared earlier. They are not recreated interfaces or generated mockups. They show earlier UI versions; version 0.27.0 mainly adds the complete runtime installer. A fresh, complete screenshot set for this release is still pending.
+These are genuine captures of the installed Zitatlotse add-on running inside Zotero on Windows, taken on October 9, 2026. They show all five main tabs, evidence mode and the additional embedding settings. No reconstructed interface is used.
 
-## AI chat
+The interface follows the active Zotero language, German in these captures. All explanations here are in English. Screenshots illustrate the installed interface; they are not a certification of the packaged release or search quality.
 
-![Original question and cited answer in the Zotero chat](assets/screenshots/ai-chat-example.png)
+**Privacy:** Images are cropped to the add-on panel. Library statistics, saved quotation titles and passages, and configured connection values are covered with opaque masks. Blank areas in those locations are redactions, not empty application data. The surrounding Zotero library and PDF reader are excluded. No search was submitted to create these screenshots.
 
-Ask in your own words and review the answer with source references. Open and save passages from the results below.
+## AI Search
 
-## Document overview
+Ask a question in your own words, select the library and collection, and let the configured AI formulate search queries and review retrieved passages. The chat and result area are shown before a question is submitted.
 
-![Ring chart and document similarity groups](assets/screenshots/document-overview-example.png)
+![Actual AI Search tab in Zotero](assets/screenshots/ai-search.png)
 
-Groups use each document's highest chunk score. Percentages count the share of documents in each group; they are not probabilities of similarity.
+## Find evidence
 
-These screenshots show examples from earlier searches and are not a quality claim about the retrieval pipeline. See the [feature catalog](FEATURES.md) for the complete interface and its behavior.
+Select **Find evidence** in the chat mode selector and enter a claim. After a search, the add-on can group retrieved evidence as supporting, opposing or neutral. This screenshot shows the actual input mode before submission; it does not show a generated evidence result.
+
+![Actual evidence search input mode in Zotero](assets/screenshots/evidence-search.png)
+
+## Direct Search
+
+Search without an AI provider, process the selected item or process all new and changed PDFs. Library and collection controls determine the search scope.
+
+![Actual Direct Search tab in Zotero](assets/screenshots/direct-search.png)
+
+## Saved Quotes
+
+Search saved quotations by passage, title or note. Each quotation has controls to save a note, copy the citation, open the PDF and remove the saved quotation. Source titles and quotation text are hidden in this capture; the actual controls remain visible.
+
+![Actual Saved Quotes tab with source content hidden](assets/screenshots/saved-quotes.png)
+
+## Connections
+
+Choose OpenAI, Anthropic, DeepSeek or Ollama, load available models, and configure or test the connection. Selected provider and model values and credential status are hidden for privacy. No credentials or connection settings were changed for the capture.
+
+![Actual Connections tab with configured values hidden](assets/screenshots/connections.png)
+
+## Settings
+
+### Citations and multi-step search
+
+Choose an installed Zotero citation style, enable agentic calls, limit search steps and control whether AI activity is shown.
+
+![Actual citation and agentic search settings in Zotero](assets/screenshots/settings-search.png)
+
+### Local embedding model
+
+Select the retrieval model, read its language and resource description and open its Hugging Face model page. Changing the model requires confirmation before rebuilding stored embeddings. This capture shows the settings after scrolling down; the header remains visible.
+
+![Actual embedding model settings in Zotero](assets/screenshots/settings-embeddings.png)
+
+### Custom Hugging Face models
+
+Expand the custom-model section to enter a compatible model repository, input profile, optional revision and processing batch size. The displayed repository is the built-in placeholder, not a newly loaded model. No model download or index rebuild was triggered for these screenshots.
+
+![Actual custom Hugging Face model form in Zotero](assets/screenshots/settings-hugging-face.png)
