@@ -11,7 +11,7 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 ROOT = Path(__file__).resolve().parent
 TOP_LEVEL = (
     "README.md", "README.en.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
-    "SECURITY.md", "AGENTS.md", ".gitignore", ".gitattributes", "package.py",
+    "SECURITY.md", ".gitignore", ".gitattributes", "package.py",
     "requirements-dev.txt", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
     "test_plugin.js", "test_search_session.js", "smoke_service_start.js",
     "smoke_autostart.ps1", "build_runtime.py", "test_runtime.js", "test_runtime_setup.ps1",
