@@ -12,7 +12,7 @@
 
 ## Standard installation: the XPI only
 
-1. Download **Zitatlotse-0.27.0.xpi** from [Releases](https://github.com/Cuzimnero/zitatlotse/releases). The first public release is still being prepared.
+1. Download **Zitatlotse-0.27.0.xpi** from the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0). No GitHub account is required.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File** and select the XPI.
 3. Restart Zotero. The add-on installs its bundled local runtime in your user profile and starts the search service automatically.
 4. Open the purple button. A progress bar shows setup, checks and startup. If setup fails, choose **Check search service** to retry.

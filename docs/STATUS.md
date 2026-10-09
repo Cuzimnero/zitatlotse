@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-**As of 6 October 2026 · Version 0.27.0 · Experimental prototype**
+**As of 9 October 2026 · Version 0.27.0 · Experimental prototype**
 
 ## New standard XPI installation
 
@@ -28,7 +28,7 @@ An actual PC reboot and complete first installation through Zotero's native add-
 | Real local search pipeline | Model and PDF smoke tests plus direct queries against an existing index. |
 | Earlier live AI runs | Positive DINO/distillation questions and an unrelated negative case tested with the configured provider; actual results replayed through UI logic. No automated cloud-based CI. |
 
-Some isolated tests use simulated vectors and provider responses. They do not measure real retrieval quality. The simulated Zotero environment does not replace manual checks in the native client. The prepared GitHub Actions workflow has not yet run on GitHub.
+Some isolated tests use simulated vectors and provider responses. They do not measure real retrieval quality. The simulated Zotero environment does not replace manual checks in the native client. The [Windows GitHub Actions run](https://github.com/Cuzimnero/zitatlotse/actions/runs/37955567562) passed backend, plugin, session, startup/provisioning and source packaging checks on 9 October 2026 after adding the missing Hugging Face metadata dependency to the isolated test requirements. The [screenshot gallery](SCREENSHOTS.md) records the actual installed interface, without claiming full native workflow coverage.
 
 ## Earlier Windows cold-start and failure tests (0.26.3)
 

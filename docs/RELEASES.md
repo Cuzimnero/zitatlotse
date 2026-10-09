@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-The repository and the first experimental release are **private**. Sign in to GitHub with an account that has repository access to view or download the assets. No public release has been made.
+The repository and the first experimental release are **public**. No GitHub account is required to view the source or download the release assets. Version 0.27.0 remains an experimental prerelease; publication does not change its testing status or known limitations.
 
 ## Release files
 
@@ -15,7 +15,7 @@ The repository and the first experimental release are **private**. Sign in to Gi
 
 For normal use, you only need the **XPI**. Source archives are provided for development, review and license compliance.
 
-Download [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or open the [private test release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0) for the source archives and checksums. GitHub authentication is required while the repository is private.
+Download [`Zitatlotse-0.27.0.xpi`](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or open the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0) for the source archives and checksums. The versioned source archive records the original release snapshot; the main branch contains subsequent documentation and CI dependency updates.
 
 ## Publishing
 
