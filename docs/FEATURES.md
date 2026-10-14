@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-As of **0.27.0**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
+As of **0.27.1**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
 
 ## 1. Zotero interface
 

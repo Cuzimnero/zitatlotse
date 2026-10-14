@@ -6,7 +6,7 @@
 
 Zitatlotse searches your PDF library for original passages and helps you check claims against supporting and opposing evidence. You choose the embedding model and AI provider. With Ollama, AI requests can stay local.
 
-**Zotero 10 · Windows x64 · Version 0.27.0 · Experimental prototype · MIT for original project code**
+**Zotero 10 · Windows x64 · Version 0.27.1 · Experimental prototype · MIT for original project code**
 
 ![AI Search in the running Zotero add-on, with library statistics hidden](docs/assets/screenshots/ai-search.png)
 
@@ -37,7 +37,7 @@ The workflow connects research to the source: **question → original evidence �
 
 Requirements: **Zotero 10 on Windows x64**, locally available PDFs with extractable text, and enough disk space for the runtime and model weights. The release XPI includes Python and the required libraries.
 
-1. Download **Zitatlotse-0.27.0.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.0/Zitatlotse-0.27.0.xpi) or from the [experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0). The repository and downloads are public; no GitHub account is required.
+1. Download **Zitatlotse-0.27.1.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.1/Zitatlotse-0.27.1.xpi) or from the [experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.1). The repository and downloads are public; no GitHub account is required.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File**, select the XPI and restart Zotero.
 3. Zotero sets up the bundled local search service and shows setup progress. No separate installer, Python installation or manual service launch is needed.
 4. Select a PDF or library item and choose **Process this PDF** or **Process this item** in the right sidebar. On first use, the selected search models are downloaded. Choose **Process all new or changed PDFs** to index the library.
@@ -86,7 +86,7 @@ API keys are stored with `keyring` in the operating system's credential store. T
 
 **Experimental prototype with known limitations.** Search quality and model selection need further evaluation across larger and more varied libraries.
 
-- Version 0.27.0 starts and repairs the service through Zotero. A 30-second check is intended to recover from complete process loss. The earlier Windows task startup had a known recovery gap; a real PC reboot still needs separate testing.
+- Version 0.27.1 starts and repairs the service through Zotero. A 30-second check is intended to recover from complete process loss. The earlier Windows task startup had a known recovery gap; a real PC reboot still needs separate testing.
 - In a local test, the first real search after a process restart took about 83 seconds. A reachable service does not mean the models are already loaded.
 - Vector comparison is an exact scan; there is no ANN index for very large libraries yet.
 - Scanned PDFs need OCR beforehand. PDF page numbers may differ from printed page numbers.
@@ -100,6 +100,7 @@ See [test status, open issues and next steps](docs/STATUS.md).
 
 ```powershell
 python -m pip install -r requirements-dev.txt
+python -m unittest test_package
 python -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
 node test_search_session.js

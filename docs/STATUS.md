@@ -2,7 +2,11 @@
 
 [Project page](../README.md)
 
-**As of 9 October 2026 · Version 0.27.0 · Experimental prototype**
+**As of 14 October 2026 · Version 0.27.1 · Experimental prototype**
+
+## Installation manifest correction (0.27.1)
+
+The published 0.27.0 XPI omitted `applications.zotero.update_url`, which Zotero requires before installation. Version 0.27.1 restores a real HTTPS endpoint and adds build-time manifest validation and regression tests. The endpoint currently offers no automatic updates. The Zotero version limits were already correct.
 
 ## New standard XPI installation
 

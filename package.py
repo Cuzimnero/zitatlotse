@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 TOP_LEVEL = (
     "README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
     "SECURITY.md", ".gitignore", ".gitattributes", "package.py",
-    "requirements-dev.txt", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
+    "requirements-dev.txt", "updates.json", "test_package.py", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
     "test_plugin.js", "test_search_session.js", "smoke_service_start.js",
     "smoke_autostart.ps1", "build_runtime.py", "test_runtime.js", "test_runtime_setup.ps1",
 )
@@ -20,6 +21,22 @@ PLUGIN = (
     "manifest.json", "bootstrap.js", "search.svg",
     "locale/de-DE/zitatfinder.ftl", "locale/en-US/zitatfinder.ftl",
 )
+
+
+def validate_manifest(manifest):
+    """Fail before publishing an XPI that Zotero rejects as an invalid extension."""
+    if manifest.get("manifest_version") != 2 or not manifest.get("version"):
+        raise ValueError("A versioned manifest_version 2 is required")
+    target = manifest.get("applications", {}).get("zotero", {})
+    # Zotero's Extension.sys.mjs requires update_url even for manual installation.
+    for field in ("id", "update_url", "strict_min_version", "strict_max_version"):
+        if not isinstance(target.get(field), str) or not target[field].strip():
+            raise ValueError(f"applications.zotero.{field} is required")
+    url = urlsplit(target["update_url"])
+    if url.scheme != "https" or not url.hostname or url.hostname in {"example.com", "example.org"}:
+        raise ValueError("update_url must point to a real HTTPS update manifest")
+    if "*" in target["strict_min_version"]:
+        raise ValueError("strict_min_version cannot contain a wildcard")
 
 
 def source_files():
@@ -43,7 +60,9 @@ def main():
     parser.add_argument("--source-only", action="store_true", help="Build source without an installable XPI")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    version = json.loads((ROOT / "plugin" / "manifest.json").read_text(encoding="utf-8"))["version"]
+    manifest = json.loads((ROOT / "plugin" / "manifest.json").read_text(encoding="utf-8"))
+    validate_manifest(manifest)
+    version = manifest["version"]
     # Stable file ordering makes it easy to inspect what is distributed.
     artifacts = []
     if not args.source_only:

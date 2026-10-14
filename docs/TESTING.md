@@ -6,6 +6,7 @@
 
 ```powershell
 python -m pip install -r requirements-dev.txt
+python -m unittest test_package
 python -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
 node test_search_session.js
@@ -20,7 +21,7 @@ These tests use temporary/synthetic data and simulated encoders or provider resp
 ```powershell
 python build_runtime.py
 python package.py
-.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.27.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
+.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.27.1.xpi -TestRoot .\outputs\runtime-test -Port 18765
 ```
 
 The check installs the bundled runtime in a separate test folder, removes Python from `PATH` and blocks model downloads. It checks actual service availability, progress, recovery after complete process loss and preservation of the test database. It does not use the regular installation on port 8765 or make cloud requests. It does not reboot the operating system.

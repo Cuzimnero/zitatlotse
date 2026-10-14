@@ -345,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             self._send(200, {"ok": True, "service": "zitatlotse", "llm": get_settings()["provider"],
-                             "version": "0.27.0",
+                             "version": "0.27.1",
                              "models_cached": MODELS_CACHED})
         elif parsed.path == "/settings":
             self._send(200, get_settings())

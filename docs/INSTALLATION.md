@@ -12,7 +12,7 @@
 
 ## Standard installation: the XPI only
 
-1. Download **Zitatlotse-0.27.0.xpi** from the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.0). No GitHub account is required.
+1. Download **Zitatlotse-0.27.1.xpi** from the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.1). No GitHub account is required.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File** and select the XPI.
 3. Restart Zotero. The add-on installs its bundled local runtime in your user profile and starts the search service automatically.
 4. Open the purple button. A progress bar shows setup, checks and startup. If setup fails, choose **Check search service** to retry.
@@ -45,7 +45,7 @@ The standard installation needs no Windows scheduled task or administrator right
 | --- | --- |
 | Bundled Python runtime | `runtime\<package-id>` |
 | Installed version and startup paths | `installation.json` |
-| Setup progress | `setup-state-0.27.0.json` |
+| Setup progress | `setup-state-0.27.1.json` |
 | Index and saved quotations | `backend\data\quotes.sqlite` |
 | Model cache | `backend\data\models` |
 | Settings without keys | `backend\data\settings.json` |

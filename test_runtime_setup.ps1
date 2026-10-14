@@ -13,10 +13,17 @@ $status = Join-Path $root 'setup-state.json'
 $script = Join-Path $PSScriptRoot 'runtime\setup.ps1'
 $savedPath = $env:PATH
 $savedOffline = $env:HF_HUB_OFFLINE
-$report = @{version='0.27.0'; external_python=$false; model_downloads=$false; cloud_calls=0}
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$testArchive = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($Xpi))
+try {
+    $reader = New-Object IO.StreamReader($testArchive.GetEntry('runtime/manifest.json').Open())
+    try { $expectedVersion = ($reader.ReadToEnd() | ConvertFrom-Json).version }
+    finally { $reader.Dispose() }
+} finally { $testArchive.Dispose() }
+$report = @{version=$expectedVersion; external_python=$false; model_downloads=$false; cloud_calls=0}
 function Check-Health {
     $health = Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 5
-    if (-not $health.ok -or $health.version -ne '0.27.0') { throw 'Unexpected service health.' }
+    if (-not $health.ok -or $health.version -ne $expectedVersion) { throw 'Unexpected service health.' }
 }
 function Stop-TestService {
     $stateFile = Join-Path $root 'backend\data\supervisor.json'

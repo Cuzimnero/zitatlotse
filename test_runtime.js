@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path').win32;
-const meta = {version:'0.27.0',platform:'win-x64',runtime_sha256:'a'.repeat(64),backend_sha256:'b'.repeat(64)};
+const version = JSON.parse(fs.readFileSync('plugin/manifest.json','utf8')).version;
+const meta = {version,platform:'win-x64',runtime_sha256:'a'.repeat(64),backend_sha256:'b'.repeat(64)};
 const root = 'C:\\Users\\Test\\.zitatlotse';
 function harness(options={}) {
     let live=options.live || false, launches=[], files=new Map(), fail=options.fail;
@@ -20,7 +21,7 @@ function harness(options={}) {
             HTTP:{request:async(_method,url)=>{
                 if(url.startsWith('jar:'))return {responseText:url.endsWith('manifest.json')?JSON.stringify(meta):'setup script'};
                 if(!live){const error=new Error('connection refused'); error.status=0; throw error;}
-                return {responseText:JSON.stringify({ok:true,service:options.foreign?'other-app':'zitatlotse',version:live==='old'?'0.26.3':'0.27.0'})};}}},
+                return {responseText:JSON.stringify({ok:true,service:options.foreign?'other-app':'zitatlotse',version:live==='old'?'0.26.3':version})};}}},
         Components:{interfaces:{},classes:{
             '@mozilla.org/process/environment;1':{getService:()=>({get:name=>({USERPROFILE:'C:\\Users\\Test',SystemRoot:'C:\\Windows'})[name]||''})},
             '@mozilla.org/file/local;1':{createInstance:()=>({initWithPath(file){this.path=file;},exists:()=>true})},
