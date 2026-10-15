@@ -12,11 +12,11 @@
 
 ## Standard installation: the XPI only
 
-1. Download **Zitatlotse-0.27.1.xpi** from the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.1). No GitHub account is required.
+1. Download **Zitatlotse-0.29.0.xpi** from the [public experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.29.0). No GitHub account is required.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File** and select the XPI.
 3. Restart Zotero. The add-on installs its bundled local runtime in your user profile and starts the search service automatically.
 4. Open the purple button. A progress bar shows setup, checks and startup. If setup fails, choose **Check search service** to retry.
-5. Process a PDF or library item. The selected embedding model and BERTScore model are downloaded on first use.
+5. Process a PDF or library item. The selected embedding model is downloaded when first needed. BERTScore loads on demand in Normal mode; Fast mode skips it and may be less accurate.
 
 **No separate Python installation, extra installer script or manual service launch is needed.** The XPI contains Python, CPU libraries and backend code. The runtime is extracted from the installed add-on. Model weights remain separate downloads because of their size and the user's choice of model.
 
@@ -45,7 +45,7 @@ The standard installation needs no Windows scheduled task or administrator right
 | --- | --- |
 | Bundled Python runtime | `runtime\<package-id>` |
 | Installed version and startup paths | `installation.json` |
-| Setup progress | `setup-state-0.27.1.json` |
+| Setup progress | `setup-state-0.29.0.json` |
 | Index and saved quotations | `backend\data\quotes.sqlite` |
 | Model cache | `backend\data\models` |
 | Settings without keys | `backend\data\settings.json` |

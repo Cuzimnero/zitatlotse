@@ -6,7 +6,7 @@ on:
       tag:
         description: Version tag matching plugin/manifest.json
         required: true
-        default: v0.27.1
+        default: v0.29.0
 
 permissions:
   contents: read

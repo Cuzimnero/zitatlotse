@@ -4,6 +4,8 @@
 
 These are genuine captures of the installed Zitatlotse add-on running inside Zotero on Windows, taken on October 9, 2026. They show all five main tabs, evidence mode and the additional embedding settings. No reconstructed interface is used.
 
+They predate version 0.29.0's navy, pink and cyan theme. Updated native screenshots are pending; these images document the earlier interface.
+
 The interface follows the active Zotero language, German in these captures. All explanations here are in English. Screenshots illustrate the installed interface; they are not a certification of the packaged release or search quality.
 
 **Privacy:** Images are cropped to the add-on panel. Library statistics, saved quotation titles and passages, and configured connection values are covered with opaque masks. Blank areas in those locations are redactions, not empty application data. The surrounding Zotero library and PDF reader are excluded. No search was submitted to create these screenshots.

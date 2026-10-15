@@ -60,6 +60,13 @@ class FakePDF:
 
 
 class EngineTest(unittest.TestCase):
+    def setUp(self):
+        # Legacy cases replace sys.modules directly. Restore the real PDF module
+        # after each case so later integration tests do not read fake pages.
+        pdf_patch = patch.dict(sys.modules, {"pymupdf": real_pymupdf})
+        pdf_patch.start()
+        self.addCleanup(pdf_patch.stop)
+
     def test_ai_candidates_keep_secondary_numeric_passage_without_changing_direct_search(self):
         class TwoPages(FakePDF):
             def __iter__(self):

@@ -7,11 +7,7 @@ Thank you for reproducible bug reports and well-documented improvements. This pr
 ```powershell
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.venv\Scripts\python.exe -m unittest test_package
-.venv\Scripts\python.exe -m unittest discover -s backend -p "test_*.py"
-node test_plugin.js
-node test_search_session.js
-node test_runtime.js
+.venv\Scripts\python.exe run_tests.py
 python package.py --source-only
 ```
 

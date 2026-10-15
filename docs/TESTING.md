@@ -1,4 +1,14 @@
-# Run tests
+# Extended test harness
+
+Run `python run_tests.py` from the repository with `requirements-dev.txt` installed and Node.js available. For candidate archive verification and the isolated Windows setup/process-loss test, use `python run_tests.py --xpi dist/Zitatlotse-0.29.0.xpi --startup`.
+
+The runner produces per-method JSON and Markdown reports, individual logs and an optional disposable runtime installation under a new `outputs/test-runs` directory. It returns a nonzero exit code on failures. Existing output directories are never reused.
+
+The Python suite uses isolated settings/indexes, a memory credential store, offline model settings and a loopback-only socket guard. Fourteen additional system tests combine actual generated PDFs, SQLite and local HTTP with deterministic embedding/LLM doubles. The JavaScript suites exercise mocked Zotero APIs. Optional archive validation compares shipped runtime code with the working tree and validates payload checksums. Optional Windows provisioning uses a separate port and only stops processes owned by its disposable directory.
+
+These checks do not measure real model relevance, live provider availability, native Zotero rendering or a complete Windows reboot. The German [detailed test catalogue](TESTPLAN.de.md) explains each method, the system-test procedures and remaining manual/quality checks. Individual methods and JavaScript blocks are counted separately; subtests are not added to the method count.
+
+## Additional test procedures
 
 [Project page](../README.md) · [Current test status](STATUS.md)
 
@@ -21,7 +31,7 @@ These tests use temporary/synthetic data and simulated encoders or provider resp
 ```powershell
 python build_runtime.py
 python package.py
-.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.27.1.xpi -TestRoot .\outputs\runtime-test -Port 18765
+.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.29.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
 ```
 
 The check installs the bundled runtime in a separate test folder, removes Python from `PATH` and blocks model downloads. It checks actual service availability, progress, recovery after complete process loss and preservation of the test database. It does not use the regular installation on port 8765 or make cloud requests. It does not reboot the operating system.
@@ -79,7 +89,7 @@ Test complete process loss after an automatic scheduled start:
 .\smoke_autostart.ps1 -SupplementaryOnly -TestSchedulerRecovery -TestScheduledTrigger -Output .\outputs\whole-service-failure.json
 ```
 
-**The current version does not pass the automatic recovery portion of this test.** A temporary one-time scheduled task is created for the test and removed afterward. The actual PC is not rebooted.
+**The published 0.27.1 baseline did not pass the automatic recovery portion of this test.** Treat recovery as an explicit release gate and consult the candidate-specific report for newer versions. A temporary one-time scheduled task is created for the test and removed afterward. The actual PC is not rebooted.
 
 Optional direct search after a cold start using your own test PDFs:
 

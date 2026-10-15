@@ -2,13 +2,21 @@
 
 [Project page](../README.md)
 
-**As of 14 October 2026 · Version 0.27.1 · Experimental prototype**
+**As of 15 October 2026 · Version 0.29.0 · Experimental prototype**
+
+## Current release verification (0.29.0)
+
+The expanded local run on October 14 passed all 127 Python methods (123 backend and 4 manifest), all three JavaScript test programs, exact-XPI integrity/source checks and the isolated Windows setup/process-loss test. The 14 new system tests combine generated PDFs, actual SQLite and loopback HTTP with controlled embeddings and provider responses. The [test catalogue](TESTPLAN.de.md) explains each method, and the [testing guide](TESTING.md) describes how to repeat the run.
+
+The tested XPI is published unchanged. The test setup uses separate databases and ports, performs no cloud calls or model downloads, and does not install the add-on into the user's Zotero profile. Fresh runtime setup completed, restart after loss of both test processes succeeded, and the test database was preserved.
+
+This release includes bundled-resource loading, startup-readiness and hidden-process fixes, Normal/Fast search modes, and the navy/pink/cyan theme. Native visual checks of this theme, real Windows boot recovery and broad retrieval-quality benchmarks are still pending. The historical observations below retain their original version and scope; they are not new 0.29.0 measurements.
 
 ## Installation manifest correction (0.27.1)
 
 The published 0.27.0 XPI omitted `applications.zotero.update_url`, which Zotero requires before installation. Version 0.27.1 restores a real HTTPS endpoint and adds build-time manifest validation and regression tests. The endpoint currently offers no automatic updates. The Zotero version limits were already correct.
 
-## New standard XPI installation
+## Historical standard XPI installation checks (0.27.1)
 
 - Official embedded Python 3.13.16 runtime, CPU PyTorch and backend are bundled in the XPI.
 - Successfully set up the real runtime from the XPI archive in an isolated test folder, with Python removed from `PATH` and model downloads disabled.

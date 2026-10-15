@@ -251,6 +251,7 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
     for code, planned_query in queries.items():
         if code != "default": progress(event={"type":"search_started", "query":planned_query, "language":code})
     page = engine.search_page({"library_id": library_id, **scope, "query": question,
+                               "search_mode": settings.get("search_mode", "thorough"),
                                "queries": queries, "limit": data.get("limit", 20),
                                "retrieval_mode":"ai" if settings["provider"] != "none" else "direct"})
     progress(event={"type":"search_results", "count":page.get("total_results", len(page["results"]))})
@@ -306,6 +307,7 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
             # Broader AI candidates may only be shown after a valid review.
             # If the provider fails, fall back to the stricter local retrieval.
             page = engine.search_page({"library_id":library_id, **scope, "query":question,
+                                       "search_mode":settings.get("search_mode", "thorough"),
                                        "queries":queries, "limit":data.get("limit",20), "retrieval_mode":"direct"})
             results = page["results"]
             for hit in results: check_hit_scope(hit, scope)
@@ -345,7 +347,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             self._send(200, {"ok": True, "service": "zitatlotse", "llm": get_settings()["provider"],
-                             "version": "0.27.1",
+                             "version": "0.29.0",
                              "models_cached": MODELS_CACHED})
         elif parsed.path == "/settings":
             self._send(200, get_settings())
@@ -374,7 +376,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = engine.index_pdf(data)
             elif self.path == "/search":
                 result = (result_store.page(data) if str(data.get("search_id", "")).startswith("agent-")
-                          else engine.search_page(data))
+                          else engine.search_page({**data, **({"search_mode":get_settings()["search_mode"]}
+                               if not data.get("search_id") else {})}))
             elif self.path == "/document-relevance":
                 result = document_relevance(engine, data)
             elif self.path == "/chat-search":

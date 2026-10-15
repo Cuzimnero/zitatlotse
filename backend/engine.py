@@ -33,6 +33,9 @@ FLAG_PREFILTER_MAX_GAP = 0.25
 COSINE_MAX_GAP = 0.06
 EVIDENCE_COSINE_MAX_GAP = 0.15
 EVIDENCE_BERT_MIN = 0.60
+# Fast mode keeps the existing relative cosine selection. This additional floor
+# only rejects very weak vectors; cosine alone is not a relevance probability.
+FAST_COSINE_MIN = 0.50
 # Direct semantic retrieval must respect each embedding family's score range.
 # Qwen's relevant local test passages scored below the old mixed .69 gate.
 DIRECT_MODEL_THRESHOLDS = {"Qwen/Qwen3-Embedding-0.6B": {"cosine":0.50, "bert":0.60}}
@@ -556,7 +559,8 @@ class Engine:
         return ranked
 
     def _fill_search_session(self, db, session: dict) -> None:
-        """Rerank every cosine candidate in bounded BERTScore batches."""
+        """Process every cosine candidate; fast sessions never load BERTScore."""
+        fast = session.get("search_mode", "thorough") == "fast"
         while session["cursor"] < len(session["ranked"]):
             if session["cursor"] >= len(session["ranked"]):
                 break
@@ -577,6 +581,9 @@ class Engine:
                     groups.setdefault(current_query, []).append((cosine, by_id[item_id]))
             scored = []
             for current_query, entries in groups.items():
+                if fast:
+                    scored.extend((cosine, None, row, current_query, cosine) for cosine, row in entries)
+                    continue
                 candidates = [row["text"] for _, row in entries]
                 _, _, f1 = self.scorer.score(candidates, [current_query] * len(entries), batch_size=8)
                 for (cosine, row), bert in zip(entries, f1.tolist()):
@@ -609,7 +616,7 @@ class Engine:
                                             "language": row["language"] or "und", "query_used": current_query,
                                             "title": row["title"], "creators": row["creators"],
                                             "year": row["year"], "zotero_uri": row["zotero_uri"],
-                                            "score": round(score, 4), "bert_score": round(bert, 4),
+                                            "score": round(score, 4), "bert_score": round(bert, 4) if bert is not None else None,
                                             "context": row["text"],
                                             "_pdf_path": row["pdf_path"],
                                             "match_type": "literal" if literal else "semantic"})
@@ -641,8 +648,12 @@ class Engine:
                     if coverage < 0.55:
                         continue
                 lexical_evidence = (best_overlap >= max(1, math.ceil(len(query_words) * 0.6))
-                                    and bert >= 0.58)
-                if session.get("evidence_mode"):
+                                    and bert is not None and bert >= 0.58)
+                if fast:
+                    profile = DIRECT_MODEL_THRESHOLDS.get(self.model_name, {})
+                    if cosine < profile.get("cosine", FAST_COSINE_MIN):
+                        continue
+                elif session.get("evidence_mode"):
                     # This is candidate retrieval, not a verdict on the whole
                     # claim. Raw cosine ranges vary by embedding family; the old
                     # fixed mixed-score gate discarded relevant Qwen passages.
@@ -688,6 +699,9 @@ class Engine:
                 query = str(data.get("query", "")).strip()
                 if not query:
                     raise ValueError("Suchfrage fehlt")
+                search_mode = data.get("search_mode", "thorough")
+                if search_mode not in ("fast", "thorough"):
+                    raise ValueError("Ungültiger Suchmodus")
                 raw_queries = data.get("queries") if isinstance(data.get("queries"), dict) else {}
                 queries = {normalize_language(code) or str(code): str(text).strip()[:500]
                            for code, text in raw_queries.items() if str(text).strip()}
@@ -711,7 +725,7 @@ class Engine:
                            "hits": [], "seen": set(), "seen_locations": set(), "recent": [],
                            "touched": now, "term_frequency": None, "term_sample_size": 0,
                            "query": query, "queries": queries,
-                           "evidence_mode": evidence_mode,
+                           "evidence_mode": evidence_mode, "search_mode": search_mode,
                            "literal_pattern": pattern if has_literal else None,
                            "literal_only": has_literal and (evidence_mode or len(query.split()) == 1),
                            "total_chunks": sum(row["count"] for row in db.execute(
@@ -739,6 +753,7 @@ class Engine:
                     "search_id": token, "next_offset": next_offset,
                     "has_more": next_offset < len(session["hits"]),
                     "total_results": len(session["hits"]),
+                    "search_mode": session.get("search_mode", "thorough"),
                     "scored_chunks": session["cursor"], "total_chunks": session["total_chunks"]}
 
     def search(self, data: dict) -> list[dict]:

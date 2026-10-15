@@ -11,6 +11,7 @@ DATA_DIR = Path(__file__).parent / "data"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 SERVICE_NAME = "Zitatlotse"
 PROVIDERS = {"none", "openai", "anthropic", "deepseek", "ollama"}
+SEARCH_MODES = {"thorough", "fast"}
 DEFAULT_MODELS = {
     "openai": "gpt-4.1-mini",
     "anthropic": "claude-sonnet-5-5",
@@ -40,9 +41,13 @@ def get_settings() -> dict:
         provider = "none"
     model = data.get("model") or os.environ.get("ZQS_LLM_MODEL") or DEFAULT_MODELS.get(provider, "")
     ollama_url = data.get("ollama_url", "http://127.0.0.1:11434")
+    search_mode = data.get("search_mode", "thorough")
+    if not isinstance(search_mode, str) or search_mode not in SEARCH_MODES:
+        search_mode = "thorough"
     return {"provider": provider, "model": model, "ollama_url": ollama_url,
             "agentic_enabled": data.get("agentic_enabled", True) is True,
             "show_ai_activity": data.get("show_ai_activity", True) is True,
+            "search_mode": search_mode,
             "agentic_max_steps": max(1, min(6, int(data.get("agentic_max_steps", 3)))),
             "has_key": bool(get_key(provider)) if provider in {"openai", "anthropic", "deepseek"} else False}
 
@@ -69,6 +74,9 @@ def save_settings(data: dict) -> dict:
     agentic_enabled = data.get("agentic_enabled", current["agentic_enabled"])
     agentic_max_steps = data.get("agentic_max_steps", current["agentic_max_steps"])
     show_ai_activity = data.get("show_ai_activity", current["show_ai_activity"])
+    search_mode = data.get("search_mode", current["search_mode"])
+    if not isinstance(search_mode, str) or search_mode not in SEARCH_MODES:
+        raise ValueError("Ungültiger Suchmodus")
     if type(show_ai_activity) is not bool:
         raise ValueError("KI-Ablaufanzeige: Schalter prüfen")
     if type(agentic_enabled) is not bool or type(agentic_max_steps) is not int or not 1 <= agentic_max_steps <= 6:
@@ -85,5 +93,6 @@ def save_settings(data: dict) -> dict:
     SETTINGS_PATH.write_text(json.dumps({"provider": provider, "model": model,
                                           "ollama_url": ollama_url, "agentic_enabled": agentic_enabled,
                                           "agentic_max_steps": agentic_max_steps,
+                                          "search_mode": search_mode,
                                           "show_ai_activity": show_ai_activity}, ensure_ascii=False), encoding="utf-8")
     return get_settings()

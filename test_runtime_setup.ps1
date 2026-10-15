@@ -10,15 +10,22 @@ if ($root -eq [IO.Path]::GetPathRoot($root) -or $root -eq $env:USERPROFILE -or
     $root -eq (Join-Path $env:USERPROFILE '.zitatlotse')) { throw 'A disposable test directory is required.' }
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $status = Join-Path $root 'setup-state.json'
-$script = Join-Path $PSScriptRoot 'runtime\setup.ps1'
+$script = Join-Path $root 'setup-from-xpi.ps1'
 $savedPath = $env:PATH
 $savedOffline = $env:HF_HUB_OFFLINE
+$savedModulePath = $env:PSModulePath
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $testArchive = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($Xpi))
 try {
+    # A Python/Core PowerShell caller can inherit a module path without the
+    # built-in Windows PowerShell modules (including Get-FileHash).
+    $windowsModules = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules'
+    $env:PSModulePath = $windowsModules + ';' + $savedModulePath
     $reader = New-Object IO.StreamReader($testArchive.GetEntry('runtime/manifest.json').Open())
     try { $expectedVersion = ($reader.ReadToEnd() | ConvertFrom-Json).version }
     finally { $reader.Dispose() }
+    # Exercise the script shipped in the candidate, not the working-tree copy.
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($testArchive.GetEntry('runtime/setup.ps1'), $script, $true)
 } finally { $testArchive.Dispose() }
 $report = @{version=$expectedVersion; external_python=$false; model_downloads=$false; cloud_calls=0}
 function Check-Health {
@@ -74,4 +81,5 @@ try {
     Stop-TestService
     $env:PATH = $savedPath
     $env:HF_HUB_OFFLINE = $savedOffline
+    $env:PSModulePath = $savedModulePath
 }

@@ -303,6 +303,7 @@ def agentic_search(data: dict, engine, settings: dict, get_key, languages: dict,
                     continue
                 progress(phase="searching", event={"type":"search_started", "query":query, "language":language or "all"})
                 page = engine.search_page({"library_id": library_id, **scope, "query": query,
+                                           "search_mode": settings.get("search_mode", "thorough"),
                                            "queries": {language: query} if language else {}, "limit": TOOL_PASSAGES,
                                            "retrieval_mode":"evidence" if evidence_mode else "ai"})
                 if evidence_mode:

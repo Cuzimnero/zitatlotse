@@ -44,7 +44,7 @@ For a library item, process its PDF attachments. A library scan reindexes only o
 2. Encode the query with the active local encoder.
 3. Coarsely exclude only extremely unlikely documents.
 4. Compare all remaining chunks using cosine similarity.
-5. Rerank similar candidates with BERTScore.
+5. In normal mode, rerank similar candidates with BERTScore. In fast mode, skip this step and rank by cosine alone; results may be less accurate. Choose the mode in Settings → Search speed.
 6. Apply literal-query and relevance rules, then deduplicate overlaps.
 7. Show paginated quotations with paper title and PDF page.
 

@@ -52,13 +52,15 @@ The main tables are `documents`, `chunks`, `saved_quotes` and `index_metadata`. 
 1. **Set scope:** one library ID and optionally a fixed attachment list for a collection. An empty list stays empty.
 2. **Coarse document filter:** for larger libraries, remove documents that appear especially distant. At least 85% are generally retained; matching topic features may retain additional documents. Short single-term queries bypass this exclusion.
 3. **Cosine:** compare the query with every chunk in the remaining documents. Pass candidates within 0.06 of the best direct-search score to the next stage. Handle multilingual and AI query variants so that a stronger variant does not displace a suitable result from another variant.
-4. **BERTScore:** rerank all qualifying candidates in bounded batches. The combined ordering uses 65% BERTScore and 35% cosine.
+4. **Optional BERTScore:** normal mode (default) reranks all qualifying candidates in bounded batches. The combined ordering uses 65% BERTScore and 35% cosine. Fast mode never loads/calls BERTScore; its ordering uses cosine alone and reports `bert_score: null`, with a broad cosine floor of 0.50 (or the existing model-specific floor). These scores are not interchangeable with the thorough mixed scores.
 5. **Validate and deduplicate:** apply relevance thresholds, literal-query cases and model-specific rules; remove repeated original passages. A matching short literal query should retain distinct real occurrences.
 6. **Paginate:** store verified results and search state; show at most 20 quotations per UI page. Search states expire after 900 seconds.
 
 AI and evidence searches intentionally use broader candidate rules so the following model review can assess more aspects. For example, these flows allow a larger cosine range of 0.15. Those candidates are not yet quotations selected as reliable evidence. Model families may need their own minimum scores.
 
 All values are current implementation parameters, not universal relevance calibration. Changes must be tested with positive queries, unrelated negative cases and scope boundaries.
+
+The persisted `search_mode` setting is either `thorough` or `fast`. The HTTP service applies it to new direct queries; AI planning, agent tools and evidence retrieval propagate the job's settings snapshot, including fallbacks. Pagination retains the session's original mode even after a settings change. Both modes preserve scope, literal matches, deduplication and PDF locations. The document chart remains based on maximum chunk cosine. Fast mode can return less accurate results; AI and evidence review still run when configured and can remain the dominant latency.
 
 ## AI and evidence layer
 

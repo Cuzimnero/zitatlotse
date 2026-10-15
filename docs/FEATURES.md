@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-As of **0.27.1**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
+As of **0.28.0 (local test candidate)**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
 
 ## 1. Zotero interface
 
@@ -51,7 +51,8 @@ Topic features are an automatically generated local search aid. They are not an 
 
 ## 5. Direct search
 
-- Runs without a cloud LLM: coarse topic prefilter, cosine comparison across all remaining chunks, then BERTScore reranking.
+- Runs without a cloud LLM: coarse topic prefilter and cosine comparison across all remaining chunks. Normal mode then reranks with BERTScore; fast mode skips BERTScore.
+- Choose search speed in Settings. The fast option explicitly warns that accuracy may be lower and irrelevant matches more frequent. The setting saves automatically, applies to new direct/AI/evidence searches, and requires no database rebuild.
 - Match short terms, acronyms and literal queries regardless of capitalization.
 - Keep distinct real locations where a word occurs.
 - Deduplicate repeated original passages caused by overlapping chunks.

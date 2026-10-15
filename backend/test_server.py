@@ -21,12 +21,13 @@ class ProviderTest(unittest.TestCase):
                  {"results":[],"search_id":"strict","next_offset":0,"has_more":False,"total_chunks":1,"total_results":0}]
         with patch.object(server.engine,"languages",return_value={"en":1}), \
                 patch.object(server.engine,"search_page",side_effect=pages) as search, \
-                patch.object(server,"get_settings",return_value={"provider":"ollama","agentic_enabled":False}), \
+                patch.object(server,"get_settings",return_value={"provider":"ollama","agentic_enabled":False,"search_mode":"fast"}), \
                 patch.object(server,"call_llm",side_effect=ValueError("Provider unavailable")):
             result = server.chat_search({"library_id":1,"message":"Which clinical trials support this claim?"})
         self.assertEqual(result["results"],[])
         self.assertEqual(result["total_results"],0)
         self.assertEqual([c.args[0]["retrieval_mode"] for c in search.call_args_list],["ai","direct"])
+        self.assertEqual([c.args[0]["search_mode"] for c in search.call_args_list],["fast","fast"])
 
     def test_agent_toggle_and_unsupported_model_fallback(self):
         hits = [{"id":1, "title":"Study", "page":1, "quote":"Evidence of overfitting."}]

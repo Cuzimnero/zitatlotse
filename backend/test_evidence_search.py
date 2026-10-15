@@ -29,12 +29,13 @@ class EvidenceTest(unittest.TestCase):
             return json.dumps({"assessments":[{"ref":s["ref"], "stance":"pro" if s["ref"] <= 6 else
                 "contra" if s["ref"] <= 10 else "neutral", "point":"Finding", "reason":"Reason"} for s in sources]})
         llm = Mock(side_effect=llm)
-        result = evidence.evidence_search(self.data, engine, self.settings, lambda _:"", llm)
+        result = evidence.evidence_search(self.data, engine, {**self.settings,"search_mode":"fast"}, lambda _:"", llm)
         self.assertEqual(result["evidence"], {"pro":6, "contra":4, "neutral":1, "total":11, "pro_percent":60., "contra_percent":40.})
         self.assertEqual(llm.call_count, 3)
         self.assertEqual(len(result["selected_results"]), 10)
         self.assertEqual(result["results"][8]["quote"], "Original passage 9")
         self.assertEqual(engine.search_page.call_args.args[0]["offset"], 8)
+        self.assertEqual(engine.search_page.call_args_list[0].args[0]["search_mode"], "fast")
         self.assertTrue(all(h["library_id"] == 7 for h in result["results"]))
 
     def test_neutral_only_has_no_percentage_and_no_selected_quotes(self):

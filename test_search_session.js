@@ -20,8 +20,12 @@ class Node {
             }
         }});
         const classes = new Set();
-        this.classList = {add: name => classes.add(name), remove: name => classes.delete(name),
-            toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name)};
+        const updateClass = (name, enabled) => {
+            if (enabled) classes.add(name); else classes.delete(name);
+            this.attributes.class = [...classes].join(" ");
+        };
+        this.classList = {add: name => updateClass(name, true), remove: name => updateClass(name, false),
+            toggle: (name, enabled) => updateClass(name, enabled)};
     }
     get textContent() {return (this.text || "") + this.children.map(n => n.textContent).join("");}
     set textContent(value) {this.replaceChildren(); this.text = value;}
@@ -80,7 +84,7 @@ function setup(libraryIDs = [7, 8]) {
     const modelRequests = [], modelReplies = [], relevanceRequests = [], relevanceReplies = [];
     let holdRelevance = false;
     const chatJobs = new Map(), chatReplies = [];
-    let savedSettings = {provider:"none", model:"", has_key:false, agentic_enabled:true, agentic_max_steps:3, show_ai_activity:true};
+    let savedSettings = {provider:"none", model:"", has_key:false, agentic_enabled:true, agentic_max_steps:3, show_ai_activity:true, search_mode:"thorough"};
     const positionRequests = [], readerOpens = [], readerNavigation = [];
     let confirmAnswer = false;
     const embedding = {models:[{id:"intfloat/multilingual-e5-small",label:"E5 Small",de:"100 Sprachen",en:"100 languages"},
@@ -217,6 +221,9 @@ function previewHTML(doc) {
         if (styles) attrs.style = styles;
         if (node.disabled) attrs.disabled = "disabled";
         if (node.tag === "input") attrs.value = node.value;
+        if (node.tag === "input" && node.checked) attrs.checked = "checked";
+        if (node.tag === "option" && node.value === node.parentElement?.value) attrs.selected = "selected";
+        if (node.id === "zqs-brand-icon") attrs.src = "data:image/svg+xml;base64," + fs.readFileSync("plugin/search.svg").toString("base64");
         if (node.tag === "details" && node.open) attrs.open = "open";
         const content = escape(node.tag === "textarea" ? node.value : node.text) + node.children.map(serialize).join("");
         return `<${node.tag} ${Object.entries(attrs).map(([k,v])=>k+'="'+escape(v)+'"').join(" ")}>${content}</${node.tag}>`;
@@ -423,6 +430,18 @@ function previewHTML(doc) {
     // The preferences toggle saves only agent options, preserving provider credentials.
     app.open(7, "preferences");
     await flush();
+    assert.equal(app.node("search-mode").value, "thorough");
+    assert.match(app.node("search-mode-hint").textContent, /weniger genau/);
+    app.node("search-mode").value = "fast";
+    await app.node("search-mode").fire("change");
+    assert.deepEqual(app.settingsWrites.at(-1), {search_mode:"fast"});
+    await app.node("close").click();
+    app.open(7, "preferences");
+    await flush();
+    assert.equal(app.node("search-mode").value, "fast", "Mode persists when reopening");
+    app.node("search-mode").value = "thorough";
+    await app.node("search-mode").fire("change");
+    assert.deepEqual(app.settingsWrites.at(-1), {search_mode:"thorough"});
     assert.equal(app.node("agent-enabled").checked, true);
     app.node("agent-enabled").checked = false;
     await app.node("agent-enabled").fire("change");
@@ -549,12 +568,12 @@ function previewHTML(doc) {
         assert.equal(modelApp.node("llm-model").value, actual, "Refreshing suggestions retains a manual model ID");
     }
     modelApp.open(7, "chat");
-    assert.equal(modelApp.node("chat-tab").style.background, "#e6dcff");
-    assert.equal(modelApp.node("header").style.background, "#5b36bf");
-    assert.equal(modelApp.node("chat-card").style.background, "white");
-    assert.equal(modelApp.node("chat-card").style.border, "2px solid #0f766e");
-    assert.equal(modelApp.node("chat-send").style.background, "#5b36bf");
-    assert.equal(modelApp.node("chat-input").style.border, "1px solid #bfbaca");
+    assert.equal(modelApp.node("chat-tab").style.background, "var(--zqs-active)");
+    assert.equal(modelApp.node("header").style.background, "var(--zqs-header)");
+    assert.equal(modelApp.node("chat-card").style.background, "var(--zqs-card)");
+    assert.equal(modelApp.node("chat-card").style.border, "1px solid var(--zqs-cyan)");
+    assert.equal(modelApp.node("chat-send").style.background, "var(--zqs-primary)");
+    assert.equal(modelApp.node("chat-input").style.border, "1px solid var(--zqs-border)");
     const pdfApp = setup();
     pdfApp.open(7, "search");
     pdfApp.node("search-input").value = "patch size";
@@ -932,6 +951,18 @@ function previewHTML(doc) {
             for (const quote of selected.slice(0,20))
                 assert.ok(replay.node("chat-results").textContent.includes(quote.quote), "Reopening preserves actual AI result");
             console.log("Echte KI-Antwort im Suchfenster sichtbar: " + entry.id + " · " + selected.length + " Zitate");
+        }
+    }
+    if (process.env.ZITATLOTSE_THEME_PREVIEW) {
+        const folder = process.env.ZITATLOTSE_THEME_PREVIEW;
+        fs.mkdirSync(folder, {recursive:true});
+        for (const tab of ["chat","search","saved","settings","preferences"]) {
+            const preview = setup();
+            preview.context.Zotero.Libraries.getAll = () => [{libraryID:7,name:"Demo library"}];
+            preview.context.Zotero.Libraries.get = () => ({libraryID:7,name:"Demo library"});
+            preview.open(7,tab);
+            await flush();
+            fs.writeFileSync(folder + "/" + tab + ".html",previewHTML(preview.doc));
         }
     }
     console.log("Live-KI-Ablauf, Anzeigeeinstellung, Sammlung, Untersammlungen und Abbruch bei Filterwechsel: OK");

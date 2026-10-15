@@ -14,7 +14,7 @@ TOP_LEVEL = (
     "README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
     "SECURITY.md", ".gitignore", ".gitattributes", "package.py",
     "requirements-dev.txt", "updates.json", "test_package.py", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
-    "test_plugin.js", "test_search_session.js", "smoke_service_start.js",
+    "test_plugin.js", "test_search_session.js", "smoke_service_start.js", "run_tests.py",
     "smoke_autostart.ps1", "build_runtime.py", "test_runtime.js", "test_runtime_setup.ps1",
 )
 PLUGIN = (

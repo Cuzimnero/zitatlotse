@@ -6,11 +6,11 @@
 
 Zitatlotse searches your PDF library for original passages and helps you check claims against supporting and opposing evidence. You choose the embedding model and AI provider. With Ollama, AI requests can stay local.
 
-**Zotero 10 · Windows x64 · Version 0.27.1 · Experimental prototype · MIT for original project code**
+**Zotero 10 · Windows x64 · Version 0.29.0 · Experimental prototype · MIT for original project code**
 
 ![AI Search in the running Zotero add-on, with library statistics hidden](docs/assets/screenshots/ai-search.png)
 
-**Actual Zotero UI:** See [all menus in the screenshot gallery](docs/SCREENSHOTS.md): AI Search, evidence mode, Direct Search, Saved Quotes, Connections and Settings, including custom Hugging Face models. These are captures of the installed add-on in Zotero, cropped and redacted for privacy. The captured interface follows Zotero's German locale; this documentation is in English.
+**Actual Zotero UI:** See [all menus in the screenshot gallery](docs/SCREENSHOTS.md): AI Search, evidence mode, Direct Search, Saved Quotes, Connections and Settings, including custom Hugging Face models. These are earlier captures of the installed add-on in Zotero, cropped and redacted for privacy. Version 0.29.0 introduces a navy interface with pink and cyan accents; the gallery has not yet been updated for this theme. The captured interface follows Zotero's German locale; this documentation is in English.
 
 [Features](docs/FEATURES.md) · [Installation](docs/INSTALLATION.md) · [Workflows](docs/WORKFLOWS.md) · [Architecture](docs/ARCHITECTURE.md) · [Test status and limitations](docs/STATUS.md) · [Data and privacy](docs/DATA.md)
 
@@ -19,6 +19,7 @@ Zitatlotse searches your PDF library for original passages and helps you check c
 | Feature | What it does |
 | --- | --- |
 | **Direct search** | Search locally for terms, questions and passages without calling an AI provider. |
+| **Search speed** | Choose Normal mode with BERTScore or Fast mode with cosine-only ranking. Fast results may be less accurate; the setting also applies to AI and evidence searches. |
 | **AI search** | Ask in your own words; the AI formulates queries for the languages in your PDFs and summarizes relevant original passages with citations. |
 | **Multi-step search** | A compatible model can make real tool calls to search again and refine its queries. Configure the step limit and activity view. |
 | **Find evidence** | Enter a claim and compare retrieved passages as supporting, opposing or neutral. |
@@ -37,7 +38,7 @@ The workflow connects research to the source: **question → original evidence �
 
 Requirements: **Zotero 10 on Windows x64**, locally available PDFs with extractable text, and enough disk space for the runtime and model weights. The release XPI includes Python and the required libraries.
 
-1. Download **Zitatlotse-0.27.1.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.27.1/Zitatlotse-0.27.1.xpi) or from the [experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.27.1). The repository and downloads are public; no GitHub account is required.
+1. Download **Zitatlotse-0.29.0.xpi** [directly](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.29.0/Zitatlotse-0.29.0.xpi) or from the [experimental release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.29.0). The repository and downloads are public; no GitHub account is required.
 2. In Zotero, choose **Tools → Add-ons → Install Add-on From File**, select the XPI and restart Zotero.
 3. Zotero sets up the bundled local search service and shows setup progress. No separate installer, Python installation or manual service launch is needed.
 4. Select a PDF or library item and choose **Process this PDF** or **Process this item** in the right sidebar. On first use, the selected search models are downloaded. Choose **Process all new or changed PDFs** to index the library.
@@ -55,7 +56,7 @@ flowchart LR
     Q[Search query] --> E[Coarse document filter]
     D --> E
     E --> F[Cosine comparison across remaining chunks]
-    F --> G[BERTScore reranking of similar candidates]
+    F --> G[Normal: BERTScore / Fast: cosine-only ranking]
     G --> H[Original quotations and PDF locations]
     H --> I[Optional AI review or supporting/opposing evidence]
 ```
@@ -63,7 +64,8 @@ flowchart LR
 - **Chunks:** at most 100 words with up to 20 words of overlap, preferably split at sentence boundaries. A chunk never crosses a PDF page.
 - **Topic features:** up to 16 local features from content words, word pairs and the title, plus a topic vector based on chunk embeddings. No LLM is required.
 - **Prefilter:** for larger libraries, the topic filter removes only very unlikely documents. Search then compares the query with every chunk in the remaining documents.
-- **Reranking:** candidates near the best cosine score are reranked with BERTScore. Short literal queries are case-insensitive, and overlapping passages are deduplicated.
+- **Search speed:** Settings offers **Normal mode** (default) and **Fast mode**. Fast mode skips BERTScore entirely and orders cosine candidates directly. It may include more irrelevant results. The setting saves automatically for new direct, AI and evidence searches, without rebuilding the index. Existing result pages retain their original mode.
+- **Reranking:** in normal mode, candidates near the best cosine score are reranked with BERTScore. Short literal queries are case-insensitive, and overlapping passages are deduplicated in both modes.
 - **AI:** formulates query variants for document languages, reviews retrieved original passages and cites validated locations. If the evidence is insufficient, no quotations should be marked as selected.
 
 See the [architecture](docs/ARCHITECTURE.md) for thresholds, storage and components, and [workflows](docs/WORKFLOWS.md) for each user flow.
@@ -86,7 +88,7 @@ API keys are stored with `keyring` in the operating system's credential store. T
 
 **Experimental prototype with known limitations.** Search quality and model selection need further evaluation across larger and more varied libraries.
 
-- Version 0.27.1 starts and repairs the service through Zotero. A 30-second check is intended to recover from complete process loss. The earlier Windows task startup had a known recovery gap; a real PC reboot still needs separate testing.
+- Version 0.29.0 includes packed-XPI resource loading, startup-readiness and hidden Windows helper fixes. Isolated setup and restart after complete test-process loss passed. The earlier Windows task startup had a recovery gap; a real PC reboot still needs separate testing.
 - In a local test, the first real search after a process restart took about 83 seconds. A reachable service does not mean the models are already loaded.
 - Vector comparison is an exact scan; there is no ANN index for very large libraries yet.
 - Scanned PDFs need OCR beforehand. PDF page numbers may differ from printed page numbers.
@@ -100,16 +102,12 @@ See [test status, open issues and next steps](docs/STATUS.md).
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m unittest test_package
-python -m unittest discover -s backend -p "test_*.py"
-node test_plugin.js
-node test_search_session.js
-node test_runtime.js
+python run_tests.py
 python build_runtime.py
 python package.py
 ```
 
-The automated suite uses synthetic data and simulated provider responses. Optional tests with real models and providers are documented separately and are not run automatically by CI. See [contributing](CONTRIBUTING.md) and [testing](docs/TESTING.md).
+The runner creates per-test JSON/Markdown reports under `outputs/test-runs`. It uses isolated data and simulated model/provider responses, including real PDF/SQLite/HTTP integration flows. Optional `--xpi dist/Zitatlotse-0.29.0.xpi --startup` also checks the packaged candidate and its isolated Windows restart path. Real model quality and native UI checks remain separate. See [contributing](CONTRIBUTING.md) and [testing](docs/TESTING.md).
 
 ## License and third-party projects
 

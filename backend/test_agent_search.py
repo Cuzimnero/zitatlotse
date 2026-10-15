@@ -48,9 +48,10 @@ class AgentTest(unittest.TestCase):
             return tool("finish_search", {"answer":"Body-only MAE is 6.66 [11].", "has_evidence":True,"selected_refs":[11]})
         with patch.object(agent, "call_agent_model", side_effect=model):
             result = agent.agentic_search({"library_id":7,"message":"MiVOLO body error"}, engine,
-                {"provider":"openai"}, lambda _:"key", {"en":1})
+                {"provider":"openai", "search_mode":"fast"}, lambda _:"key", {"en":1})
         self.assertIn("6.66", result["selected_results"][0]["quote"])
         self.assertEqual(engine.search_page.call_args.args[0]["retrieval_mode"], "ai")
+        self.assertEqual(engine.search_page.call_args.args[0]["search_mode"], "fast")
 
     def setUp(self):
         self.settings = {"provider": "openai", "model": "test-model", "agentic_max_steps": 3}

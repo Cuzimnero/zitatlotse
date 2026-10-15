@@ -19,6 +19,24 @@ class FakeKeyring:
 
 
 class SettingsTest(unittest.TestCase):
+    def test_speed_mode_default_persistence_provider_preservation_and_validation(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(settings, "DATA_DIR", Path(folder)), \
+                patch.object(settings, "SETTINGS_PATH", Path(folder) / "settings.json"), \
+                patch.object(settings, "_keyring", return_value=FakeKeyring()):
+            self.assertEqual(settings.get_settings()["search_mode"], "thorough")
+            settings.save_settings({"provider":"ollama","model":"test","agentic_enabled":False})
+            saved = settings.save_settings({"search_mode":"fast"})
+            self.assertEqual(saved["search_mode"], "fast")
+            self.assertEqual(saved["provider"], "ollama")
+            self.assertFalse(saved["agentic_enabled"])
+            self.assertEqual(settings.get_settings()["search_mode"], "fast")
+            self.assertEqual(settings.save_settings({"show_ai_activity":False})["search_mode"], "fast")
+            for invalid in ("turbo", None, False, [], {}):
+                with self.assertRaises(ValueError): settings.save_settings({"search_mode":invalid})
+            self.assertEqual(settings.get_settings()["search_mode"], "fast")
+            self.assertEqual(settings.save_settings({"search_mode":"thorough"})["search_mode"], "thorough")
+
     def test_activity_display_persists_across_provider_changes(self):
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(settings, "DATA_DIR", Path(folder)), \

@@ -155,6 +155,7 @@ def evidence_search(data, engine, settings, get_key, call_llm, progress=lambda *
             progress(phase="searching", completed=len(steps), total=len(searches))
             progress(event={"type":"search_started", "query":query, "language":code or "all"})
             first = engine.search_page({"library_id":library_id, **scope, "query":query,
+                "search_mode":settings.get("search_mode", "thorough"),
                 "queries":{code:query} if code else {}, "limit":30, "retrieval_mode":"evidence"})
             before = len(hits)
             collect(first, engine.search_page)

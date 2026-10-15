@@ -142,13 +142,9 @@ function runtimeMessage(state) {
 
 async function readBundledText(relativePath) {
     let url = pluginRoot + relativePath;
-    // Zotero.File.getContentsAsync(jar:...) returns an HTTP response object,
-    // while file: URLs return text. Read packed XPIs explicitly via HTTP.
-    if (pluginRoot.startsWith("jar:")) {
-        let response = await Zotero.HTTP.request("GET", url, {timeout:30000, responseType:"text"});
-        return response.responseText;
-    }
-    return Zotero.File.getContentsAsync(url);
+    // Installed XPI names contain @. Zotero.HTTP inspects nsIURI.username and
+    // fails on these jar: URIs before runtime setup can even be launched.
+    return Zotero.File.getResourceAsync(url);
 }
 
 async function bundledRuntimeMetadata() {
@@ -161,7 +157,12 @@ async function bundledRuntimeMetadata() {
             throw new Error("Invalid bundled runtime manifest");
         return data;
     })();
-    return runtimeMetadataPromise;
+    try { return await runtimeMetadataPromise; }
+    catch (error) {
+        // A transient local read error must not poison every later retry.
+        runtimeMetadataPromise = undefined;
+        throw error;
+    }
 }
 
 function localFile(path) {
@@ -173,6 +174,12 @@ function localFile(path) {
 function launchProcess(executable, args, observer = {observe() {}}) {
     let process = Components.classes["@mozilla.org/process/util;1"].createInstance(Components.interfaces.nsIProcess);
     process.init(executable);
+    if (Zotero.isWin) {
+        // Hide at process creation: PowerShell's own -WindowStyle is applied
+        // after Windows may already have created a visible console window.
+        process.startHidden = true;
+        process.noShell = true;
+    }
     process.runwAsync(args, args.length, observer);
     return process;
 }
@@ -220,13 +227,29 @@ async function prepareBundledRuntime(metadata, environment) {
             done = true;
             exitCode = topic === "process-finished" ? (subject.QueryInterface?.(Components.interfaces.nsIProcess) || subject).exitValue : -1;
         }});
-    for (let attempt = 0; attempt < 1200; attempt++) {
+    const setupDeadline = Date.now() + 600000;
+    let startingDeadline;
+    for (let attempt = 0; attempt < 1200 && Date.now() < setupDeadline; attempt++) {
         if (serviceStopping) return;
         await new Promise(resolve => setTimeout(resolve, 500));
         let state;
         try { state = await IOUtils.readJSON(statusPath); } catch (_) {}
         if (state) updateRuntimeState(state);
+        if (["starting", "ready"].includes(state?.phase) && !startingDeadline)
+            startingDeadline = Date.now() + 60000;
+        // nsIProcess can delay the installer-exit callback while a background
+        // child keeps running. The actual current worker is the readiness gate;
+        // waiting for the callback blocks every settings/index request as well.
+        try {
+            let health = await readServiceHealth();
+            if (health.version === metadata.version) return;
+        } catch (error) {
+            if (!isConnectionFailure(error)) throw error;
+        }
         if (state?.phase === "failed") throw new Error(state.error);
+        if (startingDeadline && Date.now() >= startingDeadline) throw new Error(ui(
+            "Der Suchdienst antwortet nach dem Start nicht. Details stehen unter backend\\data\\service.log. Bitte „Suchdienst prüfen“ erneut wählen.",
+            "The search service is not responding after startup. See backend\\data\\service.log. Select ‘Check service’ to retry."));
         if (done) {
             if (exitCode !== 0) throw new Error(state?.error || ui(
                 "Die lokale Einrichtung konnte nicht abgeschlossen werden. Bitte „Suchdienst prüfen“ erneut wählen.",
@@ -276,7 +299,8 @@ async function ensureLocalService() {
             "The local search service is not fully installed. Please run Install-Zitatlotse.ps1."));
         serviceProcess = launchProcess(executable, [launcher.path, "--supervise"]);
         }
-        for (let attempt = 0; attempt < 120; attempt++) {
+        const serviceDeadline = Date.now() + 60000;
+        for (let attempt = 0; attempt < 120 && Date.now() < serviceDeadline; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 500));
             try {
                 let health = await readServiceHealth();
@@ -628,6 +652,53 @@ function ensureWindowStyles(doc) {
         item-pane-sidenav .zqs-native-sidenav-hidden { display:none!important; }
         #zqs-overlay.zqs-entering { animation:zqs-backdrop-enter .28s ease-out; }
         #zqs-overlay.zqs-leaving { animation:zqs-backdrop-exit .16s ease-out forwards; }
+        #zqs-overlay {
+            color-scheme:dark;
+            --zqs-text:#f1f5ff; --zqs-muted:#a9b8d4;
+            --zqs-bg:linear-gradient(145deg,#202b46,#141e32 72%);
+            --zqs-header:linear-gradient(110deg,#263451,#17243b);
+            --zqs-card:linear-gradient(140deg,#2a3857,#1b2942);
+            --zqs-input:#111d32; --zqs-inset:#22314c;
+            --zqs-border:#617397; --zqs-line:#415374;
+            --zqs-cyan:#26d9ff; --zqs-pink:#ff4c9a;
+            --zqs-primary:linear-gradient(135deg,#ce196f,#a10d78);
+            --zqs-button:linear-gradient(155deg,#30405f,#1c2b45);
+            --zqs-active:#15455d; --zqs-success-bg:#153b42;
+            --zqs-warning-bg:#3d2d39; --zqs-warning-border:#a7778a;
+        }
+        #zqs-overlay button { transition:background .16s,border-color .16s,box-shadow .16s,filter .16s; }
+        #zqs-overlay button:not(:disabled):hover { border-color:var(--zqs-cyan)!important;filter:brightness(1.12); }
+        #zqs-overlay button:disabled { opacity:.55;cursor:default; }
+        #zqs-overlay button:focus-visible, #zqs-overlay summary:focus-visible {
+            outline:2px solid var(--zqs-cyan);outline-offset:3px;
+        }
+        #zqs-overlay input:focus, #zqs-overlay textarea:focus, #zqs-overlay select:focus {
+            outline:2px solid var(--zqs-cyan);outline-offset:1px;border-color:var(--zqs-cyan)!important;
+        }
+        #zqs-overlay input::placeholder, #zqs-overlay textarea::placeholder { color:#98aacb;opacity:1; }
+        #zqs-overlay select option { background:var(--zqs-input);color:var(--zqs-text); }
+        #zqs-overlay a { color:var(--zqs-cyan); }
+        #zqs-overlay button[aria-pressed="true"], #zqs-overlay button[aria-current="page"] {
+            border-color:var(--zqs-cyan)!important;color:#a0efff!important;box-shadow:inset 0 -2px 0 #26d9ff;
+        }
+        #zqs-panel { scrollbar-width:thin;scrollbar-color:#63779d #17243a;border:1px solid #647699; }
+        #zqs-header { box-shadow:inset 0 -1px 0 #647699; }
+        #zqs-tabs { background:#17243a;border-bottom-color:var(--zqs-line)!important; }
+        #zqs-chat-card { border-color:var(--zqs-cyan)!important; }
+        #zqs-chat-input { min-height:96px!important;border-color:#5582a0!important; }
+        #zqs-overlay .zqs-chat-bubble { border:1px solid var(--zqs-border);box-shadow:0 3px 10px #070d1926; }
+        #zqs-overlay .zqs-chat-bubble[data-role="user"] { border-color:#ff65b0; }
+        #zqs-overlay .zqs-chat-bubble[data-role="assistant"] { border-left:3px solid var(--zqs-cyan); }
+        #zqs-overlay [role="progressbar"] { background:#2d3d5c!important; }
+        #zqs-overlay .zqs-progress-fill {
+            background:repeating-linear-gradient(45deg,#00b4e2 0,#00b4e2 10px,#26d9ff 10px,#26d9ff 20px);
+            background-size:28px 28px;
+            box-shadow:0 0 9px #26d9ff66;
+        }
+        #zqs-overlay .zqs-turning-page {
+            border-color:#26d9ff;background:repeating-linear-gradient(to bottom,#273955 0,#273955 9px,#54718e 9px,#54718e 11px);
+        }
+        @media (prefers-reduced-motion:reduce) { #zqs-overlay button { transition:none; } }
         @media (max-width:700px) {
             #zqs-overlay { padding:0!important; }
             #zqs-shell {
@@ -803,28 +874,37 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         parent.append(node);
         return node;
     };
-    const buttonStyle = "appearance:none;-moz-appearance:none;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;box-sizing:border-box;min-height:38px;text-align:center;cursor:pointer;border:1px solid #bfbaca;border-radius:6px;padding:8px 12px;background:white;color:#252333;font:14px system-ui;line-height:1.25;";
-    const primaryStyle = buttonStyle + "background:#5b36bf;color:white;border:0;font-weight:700;";
+    const buttonStyle = "appearance:none;-moz-appearance:none;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;box-sizing:border-box;min-height:38px;text-align:center;cursor:pointer;border:1px solid var(--zqs-border);border-radius:6px;padding:8px 12px;background:var(--zqs-button);color:var(--zqs-text);font:14px system-ui;line-height:1.25;";
+    const primaryStyle = buttonStyle + "background:var(--zqs-primary);color:#fff;border:1px solid #ff65ad;font-weight:700;box-shadow:0 3px 12px #d20c7226;";
     const rowStyle = "display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:10px 0;";
-    const cardStyle = "background:white;border:1px solid #e2dfeb;border-radius:9px;padding:16px;margin:12px 0;";
-    const inputStyle = "display:block;box-sizing:border-box;width:100%;min-height:38px;padding:8px 10px;border:1px solid #bfbaca;border-radius:6px;font:14px system-ui;";
+    const cardStyle = "background:var(--zqs-card);border:1px solid var(--zqs-border);border-radius:9px;padding:16px;margin:12px 0;";
+    const inputStyle = "display:block;box-sizing:border-box;width:100%;min-height:38px;padding:8px 10px;border:1px solid var(--zqs-border);border-radius:6px;background:var(--zqs-input);color:var(--zqs-text);font:14px system-ui;";
     const field = (parent, label, inputTag, id) => {
         add(parent, "label", label, "display:block;margin:14px 0 5px;font-weight:700;");
         return add(parent, inputTag, undefined, inputStyle, id);
     };
     overlay = add(doc.documentElement, "div", undefined,
-        "position:fixed;inset:0;box-sizing:border-box;z-index:2147483647;background:#14102199;display:flex;align-items:center;justify-content:center;overflow:auto;padding:clamp(8px,2vw,20px);", "zqs-overlay");
+        "position:fixed;inset:0;box-sizing:border-box;z-index:2147483647;background:#080e1dcc;backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;overflow:auto;padding:clamp(8px,2vw,20px);", "zqs-overlay");
     overlay.zitatlotseLaunchButton = launchButton;
     if (launchButton) overlay.style.pointerEvents = "none";
     let shell = add(overlay, "div", undefined,
         "position:relative;box-sizing:border-box;width:min(850px,100%);max-width:100%;max-height:calc(100vh - 16px);min-width:0;min-height:0;flex:none;pointer-events:auto;", "zqs-shell");
     let panel = add(shell, "div", undefined,
-        "box-sizing:border-box;width:100%;max-height:calc(100vh - 16px);min-width:0;min-height:0;overflow:auto;background:#f7f6fb;border-radius:10px;box-shadow:0 14px 50px #0006;font:14px system-ui;color:#252333;", "zqs-panel");
+        "box-sizing:border-box;width:100%;max-height:calc(100vh - 16px);min-width:0;min-height:0;overflow:auto;background:var(--zqs-bg);border-radius:10px;box-shadow:0 14px 50px #0006;font:14px system-ui;color:var(--zqs-text);", "zqs-panel");
     let header = add(panel, "div", undefined,
-        "position:sticky;top:0;z-index:2;display:flex;min-width:0;align-items:center;justify-content:space-between;gap:12px;background:#5b36bf;color:white;padding:12px clamp(10px,2vw,20px);", "zqs-header");
-    add(header, "strong", "❞ Zitatlotse", "font-size:clamp(16px,3vw,21px);min-width:0;overflow-wrap:anywhere;line-height:1.2;color:white;");
+        "position:sticky;top:0;z-index:2;display:flex;min-width:0;align-items:center;justify-content:space-between;gap:12px;background:var(--zqs-header);color:var(--zqs-text);padding:16px clamp(10px,2vw,20px);", "zqs-header");
+    let brand = add(header, "div", undefined,
+        "display:flex;align-items:center;gap:11px;min-width:0;", "zqs-brand");
+    let brandTile = add(brand, "span", undefined,
+        "display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:42px;height:42px;flex:none;border:1px solid #ffffff40;border-radius:11px;background:#ffffff1f;box-shadow:0 2px 8px #32147b26;");
+    let brandIcon = add(brandTile, "img", undefined, "display:block;width:34px;height:34px;", "zqs-brand-icon");
+    brandIcon.setAttribute("src", (pluginRoot || "") + "search.svg");
+    brandIcon.setAttribute("alt", "");
+    brandIcon.setAttribute("aria-hidden", "true");
+    add(brand, "strong", "Zitatlotse",
+        "font:800 clamp(20px,3vw,25px)/1.1 system-ui;letter-spacing:.2px;min-width:0;overflow-wrap:anywhere;color:var(--zqs-text);text-shadow:0 1px 2px #27115b40;", "zqs-wordmark");
     let close = add(header, "button", undefined,
-        "appearance:none;-moz-appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:none;cursor:pointer;background:#5b36bf;color:white;border:2px solid white;border-radius:6px;width:46px;height:46px;min-width:46px;min-height:46px;padding:0;", "zqs-close");
+        "appearance:none;-moz-appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:none;cursor:pointer;background:#1a2943;color:var(--zqs-text);border:1px solid #7289ad;border-radius:6px;width:46px;height:46px;min-width:46px;min-height:46px;padding:0;", "zqs-close");
     close.setAttribute("aria-label", ui("Schließen", "Close"));
     close.setAttribute("title", ui("Schließen", "Close"));
     let closeIcon = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -890,7 +970,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     };
     doc.addEventListener("pointerdown", outsidePress, true);
     doc.addEventListener("keydown", escapeHandler, true);
-    let tabs = add(panel, "div", undefined, "display:flex;justify-content:center;align-items:center;flex-wrap:wrap;min-width:0;gap:7px;padding:12px clamp(10px,2vw,20px);border-bottom:1px solid #ddd9eb;");
+    let tabs = add(panel, "div", undefined, "display:flex;justify-content:center;align-items:center;flex-wrap:wrap;min-width:0;gap:7px;padding:12px clamp(10px,2vw,20px);border-bottom:1px solid var(--zqs-line);", "zqs-tabs");
     let chatTab = add(tabs, "button", ui("KI-Suche", "AI search"), buttonStyle, "zqs-chat-tab");
     let searchTab = add(tabs, "button", ui("Direkte Suche", "Direct search"), buttonStyle);
     let savedTab = add(tabs, "button", ui("Gespeicherte Zitate", "Saved quotes"), buttonStyle);
@@ -901,7 +981,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let libraryLabel = add(libraryRow, "label", ui("Bibliothek für Suche und Verarbeitung:",
         "Library for search and processing:"), "font-weight:700;");
     let librarySelect = add(libraryRow, "select", undefined,
-        "min-width:220px;max-width:100%;min-height:38px;padding:7px 10px;border:1px solid #bfbaca;border-radius:6px;background:white;color:#252333;font:14px system-ui;");
+        "min-width:220px;max-width:100%;min-height:38px;padding:7px 10px;border:1px solid var(--zqs-border);border-radius:6px;background:var(--zqs-button);color:var(--zqs-text);font:14px system-ui;");
     for (let library of Zotero.Libraries.getAll()) {
         let option = add(librarySelect, "option", library.name);
         option.value = String(library.libraryID);
@@ -910,23 +990,23 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let collectionLabel = add(collectionRow, "label", ui("Sammlung für die Suche:", "Collection to search:"), "font-weight:700;");
     collectionLabel.setAttribute("for", "zqs-collection");
     let collectionSelect = add(collectionRow, "select", undefined, inputStyle + "width:auto;min-width:220px;max-width:100%;", "zqs-collection");
-    add(collectionRow, "small", ui("Einschließlich Untersammlungen", "Including subcollections"), "color:#615d6c;");
+    add(collectionRow, "small", ui("Einschließlich Untersammlungen", "Including subcollections"), "color:var(--zqs-muted);");
     let serviceState = add(main, "p", ui("Lokaler Suchdienst wird geprüft …", "Checking local search service…"),
-        "padding:10px;border-radius:6px;background:#eeeafa;white-space:normal;");
+        "padding:10px;border-radius:6px;background:var(--zqs-inset);white-space:normal;");
     let serviceProgress = makeProgress(main);
     function onRuntimeChange(state) {
         serviceState.textContent = runtimeMessage(state);
         if (["ready", "failed"].includes(state.phase)) serviceProgress.stop();
         else { serviceProgress.start(); serviceProgress.update(state.percent || 0, 100); }
-        serviceState.style.background = state.phase === "failed" ? "#fff0dc" : state.phase === "ready" ? "#e8f5ea" : "#eeeafa";
+        serviceState.style.background = state.phase === "failed" ? "var(--zqs-warning-bg)" : state.phase === "ready" ? "var(--zqs-success-bg)" : "var(--zqs-inset)";
     }
     runtimeListeners.add(onRuntimeChange);
     onRuntimeChange(runtimeState);
     let indexState = add(main, "p", ui("Indexstand wird geladen …", "Loading index status…"),
-        "color:#615d6c;");
+        "color:var(--zqs-muted);");
     let indexStatusProgress = makeProgress(main);
     let status = add(main, "p", ui("Bereit", "Ready"),
-        "padding:10px;border-radius:6px;background:#eeeafa;white-space:normal;margin-bottom:5px;");
+        "padding:10px;border-radius:6px;background:var(--zqs-inset);white-space:normal;margin-bottom:5px;");
     let searchVisual = add(main, "div", undefined, "display:none;padding:2px 10px 12px;");
     let pageStack = add(searchVisual, "div", undefined, undefined);
     pageStack.classList.add("zqs-page-stack");
@@ -938,18 +1018,18 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         page.style.animationDelay = (-index * 0.6) + "s";
         page.style.fontSize = "9px";
         page.style.fontWeight = "700";
-        page.style.color = "#5b36bf";
+        page.style.color = "var(--zqs-cyan)";
         page.style.padding = "3px";
     }
     let searchProgress = makeProgress(searchVisual);
     let chatPanel = add(main, "section");
     let chatCard = add(chatPanel, "div", undefined, cardStyle +
-        "border:2px solid #0f766e;border-radius:12px;box-shadow:0 0 0 3px rgba(15,118,110,.08),0 4px 14px rgba(15,118,110,.08);", "zqs-chat-card");
+        "border:1px solid var(--zqs-cyan);border-radius:10px;box-shadow:0 0 0 3px #26d9ff0a,0 6px 24px #050d1e40;", "zqs-chat-card");
     add(chatCard, "strong", ui("Frage deine Bibliothek", "Ask your library"), "font-size:17px;");
     add(chatCard, "p", ui(
         "Beschreibe in eigenen Worten, wonach du suchst. Die KI sucht in den Sprachen deiner PDFs, prüft die Fundstellen und fasst passende Belege kurz zusammen.",
         "Describe what you need. AI searches in your PDFs’ languages, reviews passages and briefly summarizes relevant evidence."),
-        "line-height:1.5;color:#615d6c;");
+        "line-height:1.5;color:var(--zqs-muted);");
     let chatHistory = add(chatCard, "div", undefined,
         "display:flex;flex-direction:column;gap:10px;max-height:240px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;box-sizing:border-box;padding-right:14px;margin:12px 0;", "zqs-chat-history");
     let chatInput = add(chatCard, "textarea", undefined,
@@ -968,7 +1048,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let chatManage = add(chatActions, "button", ui("PDFs verarbeiten", "Process PDFs"), buttonStyle);
     let chatReset = add(chatActions, "button", ui("Chat zurücksetzen", "Reset chat"), buttonStyle, "zqs-chat-reset");
     add(chatCard, "small", ui("Der Verlauf bleibt bis zum Zurücksetzen oder Zotero-Neustart erhalten.",
-        "History stays until you reset it or restart Zotero."), "display:block;color:#615d6c;");
+        "History stays until you reset it or restart Zotero."), "display:block;color:var(--zqs-muted);");
     let activityPanel = add(chatPanel, "details", undefined, cardStyle + "display:none;", "zqs-ai-activity");
     let activitySummary = add(activityPanel, "summary", "", "cursor:pointer;font-weight:700;line-height:1.5;", "zqs-ai-activity-summary");
     let activityList = add(activityPanel, "ol", undefined, "max-height:200px;overflow:auto;padding-left:24px;margin:12px 0 0;", "zqs-ai-activity-list");
@@ -979,17 +1059,17 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let chatFilterRow = add(chatPanel, "label", undefined,
         "display:none;align-items:center;gap:9px;margin:16px 0 4px;cursor:pointer;", "zqs-chat-filter-row");
     let chatShowAll = add(chatFilterRow, "input", undefined,
-        "appearance:auto;width:18px;height:18px;margin:0;accent-color:#5b36bf;cursor:pointer;", "zqs-chat-show-all");
+        "appearance:auto;width:18px;height:18px;margin:0;accent-color:var(--zqs-cyan);cursor:pointer;", "zqs-chat-show-all");
     chatShowAll.setAttribute("type", "checkbox");
     add(chatFilterRow, "span", ui("Alle Treffer anzeigen", "Show all results"));
     let chatResults = add(chatPanel, "div", undefined, cardStyle, "zqs-chat-results");
     add(chatResults, "p", ui("Hier erscheinen passende Textstellen aus dieser Bibliothek.",
-        "Matching passages from this library will appear here."), "margin:0;color:#615d6c;");
+        "Matching passages from this library will appear here."), "margin:0;color:var(--zqs-muted);");
     let chatPagination = add(chatPanel, "nav", undefined, rowStyle + "justify-content:center;", "zqs-chat-pagination");
     chatPagination.setAttribute("aria-label", ui("Seiten der KI-Suchergebnisse", "AI search result pages"));
     let searchPanel = add(main, "section");
     let searchCard = add(searchPanel, "div", undefined, cardStyle);
-    let selectedItemLabel = add(searchCard, "p", "", "margin:0 0 10px;color:#615d6c;");
+    let selectedItemLabel = add(searchCard, "p", "", "margin:0 0 10px;color:var(--zqs-muted);");
     let actions = add(searchCard, "div", undefined, rowStyle);
     let single = add(actions, "button", ui("Diesen Eintrag verarbeiten", "Process this item"),
         primaryStyle + "min-height:44px;font-size:15px;");
@@ -1006,7 +1086,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let directOverview = add(searchPanel, "div", undefined, cardStyle + "display:none;", "zqs-direct-relevance");
     let results = add(searchPanel, "div", undefined, cardStyle, "zqs-search-results");
     add(results, "p", ui("Hier erscheinen gefundene Zitate aus der ausgewählten Bibliothek.",
-        "Quotes from the selected library will appear here."), "margin:0;color:#615d6c;");
+        "Quotes from the selected library will appear here."), "margin:0;color:var(--zqs-muted);");
     let searchPagination = add(searchPanel, "nav", undefined, rowStyle + "justify-content:center;", "zqs-search-pagination");
     searchPagination.setAttribute("aria-label", ui("Seiten der Suchergebnisse", "Search result pages"));
     let savedPanel = add(main, "section");
@@ -1030,7 +1110,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let model = field(settingsCard, ui("Modell", "Model"), "input", "zqs-llm-model");
     model.setAttribute("autocomplete", "off");
     let modelChoices = field(settingsCard, ui("Modell auswählen", "Choose a model"), "select", "zqs-llm-model-options");
-    let modelInfo = add(settingsCard, "small", "", "display:block;margin-top:5px;color:#615d6c;", "zqs-llm-model-info");
+    let modelInfo = add(settingsCard, "small", "", "display:block;margin-top:5px;color:var(--zqs-muted);", "zqs-llm-model-info");
     let refreshModels = add(settingsCard, "button", ui("Modellliste aktualisieren", "Refresh model list"),
         buttonStyle + "margin-top:8px;", "zqs-model-refresh");
     let modelProgress = makeProgress(settingsCard);
@@ -1039,12 +1119,12 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     apiKey.setAttribute("type", "password");
     apiKey.setAttribute("autocomplete", "off");
     let keyState = add(keyBox, "small", ui("Noch kein Schlüssel gespeichert.", "No key saved yet."),
-        "color:#615d6c;");
+        "color:var(--zqs-muted);");
     let ollamaBox = add(settingsCard, "div");
     let ollamaURL = field(ollamaBox, ui("Lokale Ollama-Adresse", "Local Ollama address"), "input");
     ollamaURL.value = "http://127.0.0.1:11434";
     add(ollamaBox, "small", ui("Ollama muss laufen und das Modell installiert sein.",
-        "Ollama must be running and the model installed."), "color:#615d6c;");
+        "Ollama must be running and the model installed."), "color:var(--zqs-muted);");
     let settingsActions = add(settingsCard, "div", undefined, rowStyle);
     let save = add(settingsActions, "button", ui("Verbindung speichern", "Save connection"), primaryStyle);
     let test = add(settingsActions, "button", ui("Verbindung testen", "Test connection"), buttonStyle);
@@ -1052,7 +1132,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     add(settingsCard, "small", ui(
         "Bei einer Cloud-Suche werden die Frage und bis zu acht Fundstellen an den gewählten Anbieter gesendet. Für Suchanfrage und Auswertung können zwei Anfragen anfallen. Ein Verbindungstest kann eine kleine Anfrage abrechnen.",
         "Cloud search sends the question and up to eight passages to the selected provider. Query planning and result review may use two requests. A connection test may incur a small charge."),
-        "color:#615d6c;");
+        "color:var(--zqs-muted);");
     let preferencesPanel = add(main, "section");
     let preferencesCard = add(preferencesPanel, "div", undefined, cardStyle);
     add(preferencesCard, "strong", ui("Zitate exportieren", "Export quotations"), "font-size:17px;");
@@ -1072,12 +1152,31 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     add(preferencesCard, "p", ui(
         "Beim Kopieren wird die Originaltextstelle mit einem Kurzbeleg im ausgewählten Zotero-Stil ausgegeben. Die PDF-Seite wird als Seitenangabe übernommen.",
         "Copying includes the original passage and a citation in the selected Zotero style. The PDF page is used as the page locator."),
-        "line-height:1.5;color:#615d6c;");
+        "line-height:1.5;color:var(--zqs-muted);");
+    let speedCard = add(preferencesPanel, "div", undefined, cardStyle);
+    add(speedCard, "strong", ui("Suchgeschwindigkeit", "Search speed"), "font-size:17px;");
+    let searchModeChoice = field(speedCard, ui("Suchmodus", "Search mode"), "select", "zqs-search-mode");
+    for (let [value, label] of [["thorough", ui("Normaler Modus", "Normal mode")],
+        ["fast", ui("Schneller Modus", "Fast mode")]]) {
+        let option = add(searchModeChoice, "option", label); option.value = value;
+    }
+    let activeSearchMode = "thorough";
+    searchModeChoice.value = activeSearchMode;
+    searchModeChoice.disabled = true;
+    add(speedCard, "p", ui(
+        "Im normalen Modus werden mögliche Treffer zusätzlich mit BERTScore geprüft. Der schnelle Modus verzichtet auf diese Prüfung. Die Ergebnisse können dadurch weniger genau sein und mehr unpassende Treffer enthalten.",
+        "Normal mode additionally checks potential matches with BERTScore. Fast mode skips this check. Results may therefore be less accurate and include more irrelevant matches."),
+        "padding:12px;border:1px solid var(--zqs-warning-border);border-radius:8px;background:var(--zqs-warning-bg);line-height:1.5;", "zqs-search-mode-hint");
+    add(speedCard, "small", ui(
+        "Gilt für neue direkte Suchen, KI-Suchen und Belegsuchen. KI-Auswertung und mehrstufige Suche bleiben verfügbar. Die Auswahl wird automatisch gespeichert; eine Neuberechnung der Datenbank ist nicht erforderlich.",
+        "Applies to new direct, AI and evidence searches. AI review and multi-step search remain available. The choice saves automatically; rebuilding the database is not required."),
+        "display:block;line-height:1.5;color:var(--zqs-muted);");
+    let searchModeProgress = makeProgress(speedCard);
     let agentCard = add(preferencesPanel, "div", undefined, cardStyle);
     add(agentCard, "strong", ui("Mehrstufige KI-Suche", "Multi-step AI search"), "font-size:17px;");
     let agentLabel = add(agentCard, "label", undefined, rowStyle + "cursor:pointer;");
     let agentEnabled = add(agentLabel, "input", undefined,
-        "appearance:auto;width:18px;height:18px;margin:0;accent-color:#5b36bf;", "zqs-agent-enabled");
+        "appearance:auto;width:18px;height:18px;margin:0;accent-color:var(--zqs-cyan);", "zqs-agent-enabled");
     agentEnabled.setAttribute("type", "checkbox");
     add(agentLabel, "span", ui("Mehrstufige Suche erlauben (Agentic Calls)", "Allow multi-step search (agentic calls)"));
     let agentSteps = field(agentCard, ui("Maximale Suchschritte pro Frage", "Maximum search steps per question"), "select", "zqs-agent-steps");
@@ -1091,26 +1190,26 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     add(agentCard, "p", ui(
         "Die KI kann Fundstellen lesen, ihre Suchfrage anpassen und weitere Aspekte suchen. Standard: 3 Suchschritte, danach eine Zusammenfassung. Die Suche bleibt in der gewählten Bibliothek. Unterstützt das Modell keine Funktionsaufrufe, wird die normale KI-Suche verwendet. Zusätzliche Schritte können länger dauern und bei Cloud-Anbietern mehr kosten.",
         "AI can read passages, refine its query and search other aspects. Default: 3 search steps, followed by a summary. Search stays in the selected library. If the model cannot use function calls, standard AI search is used. Additional steps can take longer and cost more with cloud providers."),
-        "line-height:1.5;color:#615d6c;");
+        "line-height:1.5;color:var(--zqs-muted);");
     agentEnabled.disabled = agentSteps.disabled = saveAgentSettings.disabled = true;
     let activityCard = add(preferencesPanel, "div", undefined, cardStyle);
     let activitySettingLabel = add(activityCard, "label", undefined, rowStyle + "cursor:pointer;");
     let activityEnabled = add(activitySettingLabel, "input", undefined,
-        "appearance:auto;width:18px;height:18px;margin:0;accent-color:#5b36bf;", "zqs-show-ai-activity");
+        "appearance:auto;width:18px;height:18px;margin:0;accent-color:var(--zqs-cyan);", "zqs-show-ai-activity");
     activityEnabled.setAttribute("type", "checkbox");
     activityEnabled.checked = showAIActivity;
     activityEnabled.disabled = true;
     add(activitySettingLabel, "span", ui("KI-Ablauf anzeigen", "Show AI activity"));
     add(activityCard, "p", ui("Zeigt während der KI- und Belegsuche Suchanfragen, Tool-Aufrufe, erhaltene Ergebnisse und die Auswertung. Änderungen werden sofort gespeichert.",
-        "Shows queries, tool calls, received results and review progress during AI and evidence searches. Changes are saved immediately."), "line-height:1.5;color:#615d6c;");
+        "Shows queries, tool calls, received results and review progress during AI and evidence searches. Changes are saved immediately."), "line-height:1.5;color:var(--zqs-muted);");
     let embeddingCard = add(preferencesPanel, "div", undefined, cardStyle);
     add(embeddingCard, "strong", ui("Lokales Embedding-Modell", "Local embedding model"), "font-size:17px;");
     let embeddingChoice = field(embeddingCard, ui("Modell für Dokumente und Suchanfragen", "Model for documents and queries"), "select", "zqs-embedding-model");
     add(embeddingCard, "p", ui("Wähle ein Embedding-Modell, das alle Sprachen der durchsuchten Dokumente unterstützt. Bei Fragen in einer anderen Sprache muss das Modell sprachübergreifende Suche unterstützen oder die Suchanfrage übersetzt werden. Eine übersetzte Frage ersetzt keine fehlende Unterstützung der Dokumentsprache.",
         "Choose an embedding model that supports all languages of the documents you search. For questions in another language, use a cross-language model or translate the query. Translating the question does not replace support for the document language."),
-        "padding:12px;border:1px solid #ddd3f5;border-radius:8px;background:#f4efff;line-height:1.5;font-size:13px;",
+        "padding:12px;border:1px solid var(--zqs-line);border-radius:8px;background:var(--zqs-inset);line-height:1.5;font-size:13px;",
         "zqs-embedding-language-hint");
-    let embeddingDescription = add(embeddingCard, "p", "", "color:#615d6c;line-height:1.5;", "zqs-embedding-description");
+    let embeddingDescription = add(embeddingCard, "p", "", "color:var(--zqs-muted);line-height:1.5;", "zqs-embedding-description");
     let embeddingDetails = add(embeddingCard, "button", ui("Modelldetails auf Hugging Face", "Model details on Hugging Face"), buttonStyle, "zqs-embedding-details");
     embeddingDetails.disabled = true;
     let customEdit = add(embeddingCard, "button", ui("Eingabeprofil bearbeiten", "Edit input profile"), buttonStyle + "margin-left:6px;display:none;", "zqs-custom-edit");
@@ -1120,15 +1219,15 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     embeddingRetry.style.display = "none";
     add(embeddingCard, "small", ui(
         "Ein Wechsel berechnet alle gespeicherten Text-Chunks und Themenvektoren in allen Bibliotheken neu. Gespeicherte Zitate bleiben erhalten. Das Modell wird bei Bedarf heruntergeladen.",
-        "Switching recalculates all stored chunks and topic vectors in every library. Saved quotes are preserved. The model is downloaded if needed."), "color:#615d6c;line-height:1.5;");
+        "Switching recalculates all stored chunks and topic vectors in every library. Saved quotes are preserved. The model is downloaded if needed."), "color:var(--zqs-muted);line-height:1.5;");
     embeddingChoice.disabled = true;
-    let customEmbedding = add(embeddingCard, "details", undefined, "margin-top:16px;padding:14px;border:1px solid #ddd9eb;border-radius:8px;background:#faf9ff;", "zqs-custom-embedding");
+    let customEmbedding = add(embeddingCard, "details", undefined, "margin-top:16px;padding:14px;border:1px solid var(--zqs-line);border-radius:8px;background:var(--zqs-input);", "zqs-custom-embedding");
     add(customEmbedding, "summary", ui("Eigenes Hugging-Face-Modell hinzufügen", "Add a custom Hugging Face model"), "cursor:pointer;font-weight:700;");
     add(customEmbedding, "p", ui("Gib die Modell-ID oder den Link zur Modellseite ein. Unterstützt werden lokale, mit SentenceTransformers kompatible Text-Embedding-Modelle. Frage- und Dokumentprofil müssen zur Modellbeschreibung passen.",
-        "Enter the model ID or its model-page link. Local text embedding models compatible with SentenceTransformers are supported. Query and document formats must match the model card."), "font-size:13px;line-height:1.5;color:#615d6c;");
+        "Enter the model ID or its model-page link. Local text embedding models compatible with SentenceTransformers are supported. Query and document formats must match the model card."), "font-size:13px;line-height:1.5;color:var(--zqs-muted);");
     add(customEmbedding, "small", ui("Klassifikationsmodelle wie FinBERT eignen sich nicht für diese Suche und werden abgelehnt. Für deutsche Fragen zu englischen Papers ein mehrsprachiges Embedding-Modell verwenden.",
         "Classification models such as FinBERT are unsuitable for this search and are rejected. Use a multilingual embedding model for questions and papers in different languages."),
-        "display:block;margin-bottom:10px;color:#615d6c;line-height:1.5;");
+        "display:block;margin-bottom:10px;color:var(--zqs-muted);line-height:1.5;");
     let customRepo = field(customEmbedding, ui("Hugging-Face-Modell", "Hugging Face model"), "input", "zqs-custom-repo");
     customRepo.setAttribute("placeholder", "sentence-transformers/all-MiniLM-L12-v2");
     let customProfile = field(customEmbedding, ui("Eingabeprofil", "Input profile"), "select", "zqs-custom-profile");
@@ -1150,7 +1249,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     customBatch.setAttribute("type", "number"); customBatch.setAttribute("min", "1"); customBatch.setAttribute("max", "64"); customBatch.value = "8";
     let customLoad = add(customEmbedding, "button", ui("Modell laden und verwenden", "Load and use model"), primaryStyle + "margin-top:12px;", "zqs-custom-load");
     add(customEmbedding, "small", ui("Das Modell wird einmal heruntergeladen und danach lokal genutzt. Eigener Python-Code aus Modell-Repositories wird nicht ausgeführt. Große Modelle benötigen entsprechend RAM/VRAM.",
-        "The model downloads once and then runs locally. Custom Python code from model repositories is not executed. Large models require sufficient RAM/VRAM."), "display:block;margin-top:10px;line-height:1.5;color:#615d6c;");
+        "The model downloads once and then runs locally. Custom Python code from model repositories is not executed. Large models require sufficient RAM/VRAM."), "display:block;margin-top:10px;line-height:1.5;color:var(--zqs-muted);");
     let embeddingModels = [], activeEmbedding = "", embeddingTimer;
     let currentLibraryID = libraryID;
     const report = message => { status.textContent = message; };
@@ -1232,11 +1331,13 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         savedPanel.style.display = isSaved ? "block" : "none";
         settingsPanel.style.display = isConnections ? "block" : "none";
         preferencesPanel.style.display = isPreferences ? "block" : "none";
-        chatTab.style.background = isChat ? "#e6dcff" : "white";
-        searchTab.style.background = name === "search" ? "#e6dcff" : "white";
-        savedTab.style.background = isSaved ? "#e6dcff" : "white";
-        connectionsTab.style.background = isConnections ? "#e6dcff" : "white";
-        preferencesTab.style.background = isPreferences ? "#e6dcff" : "white";
+        chatTab.style.background = isChat ? "var(--zqs-active)" : "var(--zqs-button)";
+        searchTab.style.background = name === "search" ? "var(--zqs-active)" : "var(--zqs-button)";
+        savedTab.style.background = isSaved ? "var(--zqs-active)" : "var(--zqs-button)";
+        connectionsTab.style.background = isConnections ? "var(--zqs-active)" : "var(--zqs-button)";
+        preferencesTab.style.background = isPreferences ? "var(--zqs-active)" : "var(--zqs-button)";
+        for (let [button, active] of [[chatTab,isChat],[searchTab,name === "search"],[savedTab,isSaved],
+            [connectionsTab,isConnections],[preferencesTab,isPreferences]]) button.setAttribute("aria-pressed", String(active));
         if (isChat || name === "search") renderSearchSession(isChat ? "chat" : "direct");
         else refreshSearchProgress();
         (isPreferences ? citationStyle : isConnections ? provider : isSaved ? savedSearch : isChat ? chatInput : query).focus();
@@ -1344,10 +1445,14 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         } finally { settingsProgress.stop(); }
     };
     const loadSearchSettings = async () => {
+        searchModeChoice.disabled = true;
         agentEnabled.disabled = agentSteps.disabled = saveAgentSettings.disabled = true;
         agentSettingsProgress.start();
         try {
             let saved = await get("/settings");
+            activeSearchMode = saved.search_mode === "fast" ? "fast" : "thorough";
+            searchModeChoice.value = activeSearchMode;
+            searchModeChoice.disabled = false;
             if (typeof saved.agentic_enabled !== "boolean") throw new Error(ui(
                 "Bitte den lokalen Suchdienst aus dem aktuellen Quellcode-Paket aktualisieren.",
                 "Update the local search service from the current source package."));
@@ -1429,7 +1534,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                     : ui("Aktives Modell: ", "Active model: ") + activeEmbedding;
                 let compatibility = data.active_compatibility;
                 if (compatibility?.[uiLang()]) embeddingStatus.textContent += " · " + compatibility[uiLang()];
-                embeddingStatus.style.color = compatibility?.status === "incompatible" ? "#b42318" : "";
+                embeddingStatus.style.color = compatibility?.status === "incompatible" ? "#ff9aa9" : "";
             }
             let signature = data.active_signature || activeEmbedding;
             if (knownEmbeddingModel && knownEmbeddingModel !== signature) {
@@ -1498,6 +1603,23 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         let data = await get("/embedding-models");
         embeddingChoice.value = data.job.model;
         await changeEmbedding(true);
+    });
+    searchModeChoice.addEventListener("change", async () => {
+        let selected = searchModeChoice.value;
+        searchModeChoice.disabled = true;
+        searchModeProgress.start();
+        try {
+            let saved = await request("/settings", {search_mode:selected});
+            if (saved.search_mode !== selected) throw new Error(ui(
+                "Bitte den lokalen Suchdienst aktualisieren.", "Update the local search service."));
+            activeSearchMode = selected;
+            report(selected === "fast"
+                ? ui("Schneller Modus gespeichert. Ergebnisse können weniger genau sein.", "Fast mode saved. Results may be less accurate.")
+                : ui("Normaler Modus gespeichert.", "Normal mode saved."));
+        } catch (error) {
+            searchModeChoice.value = activeSearchMode;
+            report(ui("Speichern fehlgeschlagen: ", "Save failed: ") + error.message);
+        } finally { searchModeChoice.disabled = false; searchModeProgress.stop(); }
     });
     activityEnabled.addEventListener("change", async () => {
         let previous = showAIActivity;
@@ -1582,10 +1704,10 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                 ? ui("Lokaler Suchdienst läuft. Die Modelle werden bei der ersten Verarbeitung heruntergeladen; dafür ist Internet nötig.",
                     "Local service is running. Models will download during first processing; internet is required.")
                 : ui("Lokaler Suchdienst und Modelle sind bereit.", "Local search service and models are ready.");
-            serviceState.style.background = "#e8f5ea";
+            serviceState.style.background = "var(--zqs-success-bg)";
         } catch (error) {
             serviceState.textContent = runtimeMessage({phase:"failed", error:error.message});
-            serviceState.style.background = "#fff0dc";
+            serviceState.style.background = "var(--zqs-warning-bg)";
         } finally { serviceProgress.stop(); }
     });
     single.addEventListener("click", async () => {
@@ -1658,7 +1780,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             }
             for (let hit of data.results) {
                 let card = add(savedResults, "div", undefined,
-                    "border-top:1px solid #dedbe7;padding:14px 0;");
+                    "border-top:1px solid var(--zqs-line);padding:14px 0;");
                 add(card, "strong", hit.title + ui(" · PDF-Seite ", " · PDF page ") + hit.page);
                 let quote = add(card, "p", "„" + hit.quote + "“",
                     "line-height:1.5;cursor:pointer;white-space:pre-wrap;");
@@ -1712,22 +1834,22 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             add(container, "p", ui(
                 "Tipps: Suche mit zentralen Fachbegriffen oder Synonymen, formuliere die Frage kürzer und prüfe, ob die PDFs verarbeitet wurden und durchsuchbaren Text enthalten.",
                 "Tips: Try key terms or synonyms, shorten the question, and check that the PDFs were processed and contain searchable text."),
-                "color:#615d6c;line-height:1.45;");
+                "color:var(--zqs-muted);line-height:1.45;");
             return;
         }
         for (let hit of hits) {
-            let card = add(container, "div", undefined, "border-top:1px solid #dedbe7;padding:14px 0;");
+            let card = add(container, "div", undefined, "border-top:1px solid var(--zqs-line);padding:14px 0;");
             add(card, "strong", (hit.reference_number ? "[" + hit.reference_number + "] " : "") +
                 hit.title + ui(" · PDF-Seite ", " · PDF page ") + hit.page);
             if (hit.recommended) add(card, "span", ui(" · Von KI ausgewählt", " · Selected by AI"),
-                "color:#5b36bf;font-weight:700;");
+                "color:var(--zqs-cyan);font-weight:700;");
             if (hit.stance) {
                 if (hit.evidence_scope === "aspect") add(card, "small", ui(
                     "Aspektbeleg – zeigt einen Vorteil oder Nachteil, belegt aber nicht allein die Gesamtbewertung.",
                     "Aspect evidence – demonstrates a benefit or drawback, but does not establish the overall judgment."),
-                    "display:block;margin-top:8px;color:#615d6c;line-height:1.45;");
+                    "display:block;margin-top:8px;color:var(--zqs-muted);line-height:1.45;");
                 if (hit.point) add(card, "p", hit.point, "font-weight:700;line-height:1.45;");
-                if (hit.reason) add(card, "p", hit.reason, "color:#615d6c;line-height:1.45;");
+                if (hit.reason) add(card, "p", hit.reason, "color:var(--zqs-muted);line-height:1.45;");
             }
             let quote = add(card, "p", "„" + hit.quote + "“",
                 "line-height:1.5;cursor:pointer;white-space:pre-wrap;");
@@ -1762,10 +1884,12 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         }
     };
     const addBubble = (role, message) => {
-        add(chatHistory, "div", message,
+        let bubble = add(chatHistory, "div", message,
             "align-self:" + (role === "user" ? "flex-end" : "flex-start") +
             ";box-sizing:border-box;min-width:0;max-width:90%;overflow-wrap:anywhere;padding:10px 12px;border-radius:10px;line-height:1.45;white-space:pre-wrap;background:" +
-            (role === "user" ? "#5b36bf;color:white;" : "#eeeafa;color:#252333;"));
+            (role === "user" ? "var(--zqs-primary);color:#fff;" : "var(--zqs-inset);color:var(--zqs-text);"));
+        bubble.classList.add("zqs-chat-bubble");
+        bubble.setAttribute("data-role", role);
         chatHistory.scrollTop = chatHistory.scrollHeight;
     };
     const renderEvidence = (container, state, hits) => {
@@ -1773,25 +1897,25 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         add(container, "strong", ui("Belegprüfung: ", "Evidence assessment: ") + balance.claim, "display:block;margin:12px 0;");
         add(container, "small", ui("Bei einer Abwägung werden belegte Vorteile und Nachteile als Aspektbelege gekennzeichnet. Die Verteilung entscheidet nicht automatisch über die Gesamtbewertung.",
             "For trade-offs, demonstrated benefits and drawbacks are marked as aspect evidence. Their distribution does not automatically determine the overall judgment."),
-            "display:block;color:#615d6c;line-height:1.5;");
-        for (let [stance, label, color] of [["pro", ui("Pro – spricht für die Aussage", "Pro – favors the claim"), "#137a49"],
-            ["contra", ui("Kontra – spricht gegen die Aussage", "Contra – opposes the claim"), "#ba303b"],
-            ["neutral", ui("Neutral oder unklar", "Neutral or unclear"), "#615d6c"]]) {
+            "display:block;color:var(--zqs-muted);line-height:1.5;");
+        for (let [stance, label, color] of [["pro", ui("Pro – spricht für die Aussage", "Pro – favors the claim"), "#63e2a5"],
+            ["contra", ui("Kontra – spricht gegen die Aussage", "Contra – opposes the claim"), "#ff8c9a"],
+            ["neutral", ui("Neutral oder unklar", "Neutral or unclear"), "var(--zqs-muted)"]]) {
             if (stance === "neutral" && !state.showAll) continue;
             let group = add(container, "section", undefined, "margin:18px 0;", "zqs-evidence-" + stance);
             add(group, "h3", label + " · " + balance[stance], "color:" + color + ";margin:0 0 8px;font-size:17px;");
             let matches = hits.filter(hit => hit.stance === stance);
             if (matches.length) renderHits(group, matches);
             else add(group, "p", balance[stance] ? ui("Weitere Belege auf den anderen Ergebnisseiten.", "More evidence on other result pages.")
-                : ui("Keine entsprechenden Belege gefunden.", "No corresponding evidence found."), "color:#615d6c;");
+                : ui("Keine entsprechenden Belege gefunden.", "No corresponding evidence found."), "color:var(--zqs-muted);");
         }
-        let summary = add(container, "div", undefined, "padding-top:16px;border-top:1px solid #e2dfeb;", "zqs-evidence-balance");
+        let summary = add(container, "div", undefined, "padding-top:16px;border-top:1px solid var(--zqs-border);", "zqs-evidence-balance");
         add(summary, "strong", ui("Verteilung der Pro-/Kontra-Fundstellen", "Distribution of supporting/opposing passages"));
         let directional = balance.pro + balance.contra;
         if (directional) {
             let pro = balance.pro_percent, contra = balance.contra_percent;
             let bar = add(summary, "div", undefined,
-                "display:flex;width:100%;height:28px;overflow:hidden;border-radius:8px;margin:12px 0;background:#eee;", "zqs-evidence-bar");
+                "display:flex;width:100%;height:28px;overflow:hidden;border-radius:8px;margin:12px 0;background:var(--zqs-inset);", "zqs-evidence-bar");
             bar.setAttribute("role", "img");
             bar.setAttribute("aria-label", "Pro " + pro + "%, " + ui("Kontra ", "Contra ") + contra + "%");
             add(bar, "div", "", "height:100%;width:" + pro + "%;background:#168450;transition:width .35s ease;");
@@ -1800,7 +1924,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         } else add(summary, "p", ui("Keine eindeutig unterstützenden oder widersprechenden Belege gefunden.",
             "No clearly supporting or opposing evidence found."));
         add(summary, "small", ui("Ausgewertet: ", "Assessed: ") + balance.total + ui(" unterschiedliche Fundstellen. Neutral/unklar: ", " distinct passages. Neutral/unclear: ") + balance.neutral +
-            ui(". Die Prozentwerte beziehen sich auf Pro- und Kontra-Fundstellen.", ". Percentages refer to supporting and opposing passages."), "color:#615d6c;line-height:1.5;");
+            ui(". Die Prozentwerte beziehen sich auf Pro- und Kontra-Fundstellen.", ". Percentages refer to supporting and opposing passages."), "color:var(--zqs-muted);line-height:1.5;");
     };
     const refreshSearchProgress = () => {
         let mode = chatPanel.style.display !== "none" ? "chat"
@@ -1821,7 +1945,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             let button = add(nav, "button", label, buttonStyle, id);
             button.disabled = state.pending || state.loadingMore || number < 1 || number > view.count || number === view.number;
             if (number === view.number) {
-                button.style.background = "#e6dcff";
+                button.style.background = "var(--zqs-active)";
                 button.setAttribute("aria-current", "page");
             }
             button.addEventListener("click", () => goToResultsPage(mode, number));
@@ -1840,7 +1964,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         add(nav, "small", ui("Seite ", "Page ") + view.number +
             (view.exactCount ? ui(" von ", " of ") + view.count + " · " + view.total + ui(" Treffer", " results")
                 : ui(" · weitere Treffer verfügbar", " · more results available")),
-            "flex-basis:100%;text-align:center;color:#615d6c;");
+            "flex-basis:100%;text-align:center;color:var(--zqs-muted);");
     };
     const relevanceTiers = [
         ["highest", ui("Höchste Ähnlichkeit", "Highest similarity"), "#dc454b"],
@@ -1871,12 +1995,12 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         if (state.overviewError) { add(container, "p", state.overviewError); return; }
         add(container, "p", data.query, "margin:10px 0 6px;overflow-wrap:anywhere;line-height:1.5;");
         add(container, "small", ui("Höchste Chunk-Ähnlichkeit je Dokument · relative Einteilung",
-            "Highest chunk similarity per document · relative groups"), "display:block;color:#615d6c;margin-bottom:12px;");
+            "Highest chunk similarity per document · relative groups"), "display:block;color:var(--zqs-muted);margin-bottom:12px;");
         if (data.model) add(container, "small", ui("Modell: ", "Model: ") + data.model,
-            "display:block;color:#615d6c;margin-bottom:8px;");
+            "display:block;color:var(--zqs-muted);margin-bottom:8px;");
         let compatibility = data.model_compatibility;
         if (compatibility?.[uiLang()]) add(container, "p", compatibility[uiLang()],
-            "padding:10px;border:1px solid #f2c7bd;border-radius:8px;background:#fff4ef;color:#92331e;line-height:1.5;",
+            "padding:10px;border:1px solid var(--zqs-warning-border);border-radius:8px;background:var(--zqs-warning-bg);color:#ffd0bc;line-height:1.5;",
             "zqs-" + mode + "-relevance-warning");
         if (compatibility?.status === "incompatible") {
             add(container, "p", ui("Die Grafik wird erst mit einem geeigneten Embedding-Modell berechnet.",
@@ -1887,9 +2011,9 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         }
         add(container, "small", ui("Die Farben vergleichen die Dokumente innerhalb dieses Suchbereichs. Der Ähnlichkeitswert ist keine Relevanzwahrscheinlichkeit.",
             "Colors compare documents within this search scope. Similarity is not a relevance probability."),
-            "display:block;color:#615d6c;line-height:1.4;margin-bottom:12px;");
+            "display:block;color:var(--zqs-muted);line-height:1.4;margin-bottom:12px;");
         if (Object.keys(data.language_queries || {}).length) {
-            let formulations = add(container, "details", undefined, "margin:8px 0 12px;font-size:12px;color:#615d6c;");
+            let formulations = add(container, "details", undefined, "margin:8px 0 12px;font-size:12px;color:var(--zqs-muted);");
             add(formulations, "summary", ui("Suchformulierungen nach Dokumentsprache", "Search queries by document language"), "cursor:pointer;");
             for (let [language, query] of Object.entries(data.language_queries))
                 add(formulations, "p", language.toUpperCase() + ": " + query, "margin:6px 0;overflow-wrap:anywhere;");
@@ -1898,7 +2022,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         }
         if (data.duplicate_attachments) add(container, "small", data.total_attachments + ui(" PDF-Anhänge · ", " PDF attachments · ") +
             data.duplicate_attachments + ui(" identische Kopien zusammengefasst.", " identical copies grouped."),
-            "display:block;color:#615d6c;margin-bottom:12px;", "zqs-" + mode + "-relevance-duplicates");
+            "display:block;color:var(--zqs-muted);margin-bottom:12px;", "zqs-" + mode + "-relevance-duplicates");
         if (!data.total_documents) {
             add(container, "p", ui("Keine PDFs in diesem Suchbereich.", "No PDFs in this search scope."));
             return;
@@ -1936,12 +2060,12 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                 segment.setAttribute("stroke-dasharray", `${visible} ${circumference}`)));
             offset += length;
         }
-        let count = svgNode("text", {x:110,y:106,"text-anchor":"middle",fill:"#272237","font-size":30,"font-weight":700}, chart);
+        let count = svgNode("text", {x:110,y:106,"text-anchor":"middle",fill:"var(--zqs-text)","font-size":30,"font-weight":700}, chart);
         count.textContent = String(data.total_documents);
-        let caption = svgNode("text", {x:110,y:130,"text-anchor":"middle",fill:"#615d6c","font-size":13}, chart);
+        let caption = svgNode("text", {x:110,y:130,"text-anchor":"middle",fill:"var(--zqs-muted)","font-size":13}, chart);
         caption.textContent = ui("Dokumente", "Documents");
         add(chartColumn, "small", data.scored_documents + " / " + data.total_documents + ui(" Dokumente bewertet", " documents scored"),
-            "display:block;text-align:center;color:#615d6c;");
+            "display:block;text-align:center;color:var(--zqs-muted);");
         let detail = add(layout, "div", undefined, "flex:1 1 260px;min-width:0;");
         let legend = add(detail, "div", undefined, "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;");
         const selectCategory = id => {
@@ -1953,7 +2077,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             let button = add(legend, "button", undefined, buttonStyle + "gap:6px;font-size:12px;padding:6px 8px;",
                 "zqs-" + mode + "-relevance-" + id);
             button.setAttribute("aria-pressed", String(state.overviewCategory === id));
-            if (state.overviewCategory === id) button.style.background = "#eeeafa";
+            if (state.overviewCategory === id) button.style.background = "var(--zqs-inset)";
             if (color) add(button, "span", "", `display:inline-block;width:9px;height:9px;flex-shrink:0;border-radius:50%;background:${color};`);
             add(button, "span", label);
             button.addEventListener("click", () => selectCategory(id));
@@ -1968,14 +2092,14 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         state.overviewPage = Math.min(state.overviewPage, pages);
         let list = add(detail, "div", undefined, "display:flex;flex-direction:column;gap:9px;", "zqs-" + mode + "-relevance-documents");
         for (let document of documents.slice((state.overviewPage - 1) * 5, state.overviewPage * 5)) {
-            let row = add(list, "div", undefined, "border-top:1px solid #e4e0ee;padding-top:9px;line-height:1.4;");
+            let row = add(list, "div", undefined, "border-top:1px solid var(--zqs-line);padding-top:9px;line-height:1.4;");
             add(row, "strong", document.title, "display:block;font-size:13px;overflow-wrap:anywhere;");
             let meta = document.similarity === null ? ui("Noch keine Chunks bewertet", "No chunks scored yet")
                 : ui("Ähnlichkeit: ", "Similarity: ") + document.similarity.toFixed(3) +
                     (document.page ? ui(" · Seite ", " · Page ") + document.page : "");
             if (document.duplicate_count) meta += " · " + (document.duplicate_count + 1) + ui(" identische Anhänge", " identical attachments");
             let actions = add(row, "div", undefined, "display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:5px;");
-            add(actions, "small", meta, "color:#615d6c;");
+            add(actions, "small", meta, "color:var(--zqs-muted);");
             let open = add(actions, "button", ui("PDF öffnen", "Open PDF"), buttonStyle + "font-size:12px;padding:4px 8px;");
             open.addEventListener("click", async () => {
                 try {
@@ -2021,10 +2145,10 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                 if (!label) continue;
                 let item = add(activityList, "li", undefined, "margin:8px 0;line-height:1.5;overflow-wrap:anywhere;");
                 let seconds = Math.max(0, Math.floor(event.elapsed || 0));
-                add(item, "small", Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0") + " · ", "color:#615d6c;");
+                add(item, "small", Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0") + " · ", "color:var(--zqs-muted);");
                 add(item, "span", label);
                 if (event.query) add(item, "div", (event.language && event.language !== "all" ? event.language + ": " : "") + event.query,
-                    "color:#615d6c;font-size:13px;margin-top:2px;");
+                    "color:var(--zqs-muted);font-size:13px;margin-top:2px;");
             }
             if (followActivity) activityList.scrollTop = activityList.scrollHeight;
             chatMode.value = state.searchMode;
@@ -2042,7 +2166,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         container.replaceChildren();
         if (isChat && state.queries.length) add(container, "p", ui("Suchanfragen: ", "Search queries: ") +
             state.queries.map(([language, value]) => language + ": " + value).join(" · "),
-            "color:#615d6c;line-height:1.5;");
+            "color:var(--zqs-muted);line-height:1.5;");
         if (state.hits !== null) {
             if (isChat && state.evidence) renderEvidence(container, state, view.hits);
             else if (view.filtered && !view.hits.length && state.hits.length) add(container, "p", ui(
@@ -2050,11 +2174,11 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                 "No AI-selected quotes. Enable ‘Show all results’ to view the other passages."));
             else renderHits(container, view.hits);
             if (isChat && !state.reviewed && state.hits.length) add(container, "small", ui(
-                "Lokale Treffer – keine KI-Auswahl verfügbar.", "Local results – no AI selection available."), "color:#615d6c;");
+                "Lokale Treffer – keine KI-Auswahl verfügbar.", "Local results – no AI selection available."), "color:var(--zqs-muted);");
         }
         else if (!state.pending) add(container, "p", ui(
             "Hier erscheinen passende Textstellen aus dieser Bibliothek.",
-            "Matching passages from this library will appear here."), "margin:0;color:#615d6c;");
+            "Matching passages from this library will appear here."), "margin:0;color:var(--zqs-muted);");
         renderPagination(mode, state, view);
         renderDocumentOverview(mode, state);
         if ((isChat ? chatPanel : searchPanel).style.display !== "none")
