@@ -94,7 +94,8 @@ def call_agent_model(messages: list, instructions: str, settings: dict, get_key,
         raise AgentSearchError("API-Schlüssel fehlt")
     request = urllib.request.Request(url, json.dumps(payload).encode(), headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        from search_budget import take_call
+        with urllib.request.urlopen(request, timeout=take_call(timeout)) as response:
             answer = json.load(response)
     except urllib.error.HTTPError as exc:
         # Do not expose provider response bodies or authentication headers in the UI.
@@ -218,19 +219,23 @@ def agentic_search(data: dict, engine, settings: dict, get_key, languages: dict,
                          "For trade-offs, search the stated benefits and the stated costs/limitations separately. "
                          "Use synonyms such as throughput/speed for computational cost. The claim may be false. Collected passages will all be assessed "
                          "separately afterwards; finish_search does not filter them in this mode.")
+    if data.get("previous_queries"):
+        instructions += " Earlier searches were insufficient; use a different focused aspect. Already tried: " + json.dumps(data["previous_queries"])
     messages = [{"role": "user", "content": "Earlier conversation (context only): " + json.dumps(history, ensure_ascii=False) +
                  "\nCurrent question: " + question}]
     collected, seen, exposed, steps, query_cache = [], {}, set(), [], {}
     attempts = 0
     missing_calls = 0
     deadline = time.monotonic() + 180
-    for round_number in range(1, budget + 4):
+    max_rounds = min(budget + 3, settings.get("model_call_limit", budget + 3))
+    for round_number in range(1, max_rounds + 1):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise AgentSearchError("Zeitlimit der mehrstufigen Suche erreicht")
         progress(event={"type":"model_call", "round":round_number, "purpose":"agent"})
         turn = call_agent_model(messages, instructions, settings, get_key,
-                                finish_only=attempts >= budget, search_only=not steps and attempts < budget,
+                                finish_only=attempts >= budget or round_number == max_rounds,
+                                search_only=not steps and attempts < budget and round_number != max_rounds,
                                 timeout=min(90, remaining))
         calls = turn.get("calls", [])
         if not calls:

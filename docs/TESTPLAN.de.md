@@ -287,3 +287,20 @@ Diese Prüfungen stehen ausdrücklich nicht auf „bestanden“, nur weil die au
 Mit separaten künstlichen Beständen von etwa 1.000, 10.000 und 100.000 Chunks prüfen: Indexierdauer, Datenbankgröße, RAM-Spitze, Query-Einbettung, Cosinus-Stufe, BERT-Stufe und KI-Runden getrennt. Dieselbe Frage jeweils mehrfach ausführen, Suchsessions schließen und prüfen, ob der Speicher wieder freigegeben wird. Eine rein synthetische Wiederholung gleicher Texte liefert keine belastbare Qualitätsaussage; für die Qualität diverse Inhalte verwenden.
 
 Echte Modelle nur aus einem vorhandenen Cache laden oder einen Download separat zulassen. Echte Anbieterprüfungen sind getrennte kostenpflichtige Tests und benötigen einen passenden Testbestand und Freigabe. Dieser automatisierte Aufbau sendet keine privaten PDFs an Anbieter und behauptet keine aktuelle API-Kompatibilität aus simulierten Antworten.
+
+
+## 8. Beschleunigung: lokale Testversion 0.30.0
+
+| Test | Prüfung |
+| --- | --- |
+| `test_progressive_first_window_is_bounded_and_all_locations_remain_reachable` | Prüft höchstens 40 BERT-Kandidaten vor der ersten Seite, anschließend alle 120 Fundorte ohne Duplikate; bereits angezeigte Seiten und Bibliotheksgrenzen bleiben stabil. |
+| `test_empty_progressive_window_can_continue_without_inventing_results` | Auch ohne Treffer im ersten Fenster kann die Suche weiterlaufen; der Cursor geht voran, ohne Scheinzitate zu erzeugen. |
+| `test_cache_reuses_queries_and_matrices_but_obeys_scope_and_database_changes` | Wiederholte Suche und Diagramm teilen Vektoren; Sammlung, externe Datenbankänderungen und Modellkonfiguration werden berücksichtigt. |
+| `test_cache_memory_limit_falls_back_to_streaming_with_identical_results` | Bei überschrittenem Speicherbudget wird gestreamt; Ergebnisse bleiben gleich, Suchvektoren werden begrenzt gespeichert. |
+| `test_accelerated_chat_uses_two_calls_and_skips_unneeded_agent` | Erfolgreiche normale KI-Frage nutzt genau zwei simulierte Anbieteranfragen, ohne zusätzliche Tool-Runde; DeepSeek-Planung deaktiviert Thinking, die Auswertung behält es. |
+| `test_shared_call_budget_includes_retries_and_restores_request_context` | Gemeinsames Aufruf-/Zeitbudget lässt keine weiteren Anfragen nach Erschöpfung zu und wirkt nicht auf andere Jobs. |
+| `test_missing_evidence_uses_bounded_native_followup_without_false_quotes` | Bei fehlenden Belegen folgen native Tool-Suchen, insgesamt höchstens fünf simulierte Anbieteraufrufe; ohne belegte Antwort erscheinen keine Zitate. |
+| `test_larger_evidence_batches_review_every_reference_without_changing_balance` | 48 kurze Belege benötigen zwei statt sechs Auswertungsanfragen; alle Referenzen und Pro-/Kontra-Zuordnungen bleiben erhalten, lange Texte erzwingen kleinere Pakete. |
+| `test_acceleration_setting_persists_and_rejects_non_boolean_values` | Der Testmodus ist voreingestellt, abschaltbar und dauerhaft gespeichert; ungültige Einstellungen werden abgelehnt. |
+
+Die JavaScript-Oberflächentests prüfen zusätzlich Seiten mit weniger als 20 Treffern, leere Zwischenfenster und die Fortsetzung aus der Ansicht nur empfohlener Zitate. Laufzeitmessungen mit echten lokal gespeicherten Modellen werden getrennt dokumentiert; simulierte Anbieterantworten messen keine reale Cloud-Latenz.

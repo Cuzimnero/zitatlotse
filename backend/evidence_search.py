@@ -19,11 +19,25 @@ def parse_json(raw):
     return value
 
 
+def evidence_batches(hits, optimized):
+    """Bound both passage count and UTF-8 input size; retain every source."""
+    batch, size = [], 0
+    for hit in hits:
+        cost = len(json.dumps(hit, ensure_ascii=False).encode("utf-8"))
+        if batch and (len(batch) >= (24 if optimized else 8) or (optimized and size + cost > 24000)):
+            yield batch
+            batch, size = [], 0
+        batch.append(hit)
+        size += cost
+    if batch:
+        yield batch
+
+
 def review_evidence(claim, hits, settings, lang, call_llm, progress=lambda **_: None):
     assessed = []
-    for start in range(0, len(hits), 8):
+    for batch in evidence_batches(hits, settings.get("latency_optimized", False)):
+        start = len(assessed)
         progress(phase="reviewing", completed=start, total=len(hits))
-        batch = hits[start:start + 8]
         sources = [{"ref": hit["reference_number"], "title": hit["title"], "page": hit["page"],
                     "quote": hit["quote"], "context": hit.get("context", "")} for hit in batch]
         prompt = (
@@ -39,7 +53,7 @@ def review_evidence(claim, hits, settings, lang, call_llm, progress=lambda **_: 
             "Do not infer general claims from a narrow experiment. Never invent or rewrite quotations. "
             "Return ONLY JSON {\"assessments\":[{\"ref\":integer,\"stance\":\"pro|contra|neutral\","
             "\"scope\":\"direct|aspect|neutral\",\"point\":\"brief finding\",\"reason\":\"why this passage supports/contradicts/is insufficient\"}]}. "
-            "Include each supplied ref exactly once. Write point and reason in " + ("German" if lang == "de" else "English") +
+            "Include each supplied ref exactly once. Keep each point and reason to one short sentence. Write point and reason in " + ("German" if lang == "de" else "English") +
             ".\nClaim: " + claim + "\nPassages: " + json.dumps(sources, ensure_ascii=False))
         # Invalid/incomplete batches are retried once; never silently omit passages from the count.
         for attempt in range(2):
@@ -92,7 +106,7 @@ def evidence_search(data, engine, settings, get_key, call_llm, progress=lambda *
     queries, steps, warning = {"default": claim}, [], ""
     page = None
     agent_used = False
-    if languages and settings.get("agentic_enabled", False):
+    if languages and settings.get("agentic_enabled", False) and not settings.get("latency_optimized", False):
         try:
             page = agentic_search({**data, "mode": "evidence"}, engine, settings, get_key, languages, progress)
             queries = page["queries"]
@@ -134,7 +148,7 @@ def evidence_search(data, engine, settings, get_key, call_llm, progress=lambda *
                       "Preserve key terms and negation; do not assume the claim is true.\nLanguages: " + json.dumps(languages) +
                       "\nClaim: " + claim)
             progress(event={"type":"model_call", "purpose":"planning"})
-            plan = parse_json(call_llm(prompt, settings)).get("queries", {})
+            plan = parse_json(call_llm(prompt, {**settings, "_purpose":"planning"})).get("queries", {})
             if not isinstance(plan, dict):
                 raise ValueError("Ungültige Suchplanung")
             seen_queries = set()
@@ -163,6 +177,21 @@ def evidence_search(data, engine, settings, get_key, call_llm, progress=lambda *
             steps.append({"query":query, "language":code or "all", "count":len(hits) - before})
     else:
         collect(page, result_store.page)
+    if not hits and languages and settings.get("latency_optimized") and settings.get("agentic_enabled"):
+        try:
+            from search_budget import call_budget
+            with call_budget(3, 180):
+                extra = agentic_search({**data, "mode":"evidence", "previous_queries":list(queries.values())},
+                    engine, {**settings, "agentic_max_steps":min(2, settings.get("agentic_max_steps", 3)),
+                             "model_call_limit":3}, get_key, languages, progress)
+            collect(extra, result_store.page)
+            queries.update({"extra " + key:value for key,value in extra["queries"].items()})
+            steps.extend(extra["agent_steps"])
+            agent_used = True
+        except SearchCancelled:
+            raise
+        except Exception as exc:
+            warning = ("Zusätzliche Suche beendet: " if lang == "de" else "Additional search stopped: ") + str(exc)
     progress(event={"type":"review_started", "count":len(hits)})
     assessed = review_evidence(claim, hits, settings, lang, call_llm, progress)
     progress(phase="reviewing", completed=len(hits), total=len(hits))

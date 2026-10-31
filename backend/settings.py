@@ -47,6 +47,7 @@ def get_settings() -> dict:
     return {"provider": provider, "model": model, "ollama_url": ollama_url,
             "agentic_enabled": data.get("agentic_enabled", True) is True,
             "show_ai_activity": data.get("show_ai_activity", True) is True,
+            "latency_optimized": data.get("latency_optimized", True) is True,
             "search_mode": search_mode,
             "agentic_max_steps": max(1, min(6, int(data.get("agentic_max_steps", 3)))),
             "has_key": bool(get_key(provider)) if provider in {"openai", "anthropic", "deepseek"} else False}
@@ -75,6 +76,9 @@ def save_settings(data: dict) -> dict:
     agentic_max_steps = data.get("agentic_max_steps", current["agentic_max_steps"])
     show_ai_activity = data.get("show_ai_activity", current["show_ai_activity"])
     search_mode = data.get("search_mode", current["search_mode"])
+    latency_optimized = data.get("latency_optimized", current["latency_optimized"])
+    if type(latency_optimized) is not bool:
+        raise ValueError("Beschleunigung: Schalter prüfen")
     if not isinstance(search_mode, str) or search_mode not in SEARCH_MODES:
         raise ValueError("Ungültiger Suchmodus")
     if type(show_ai_activity) is not bool:
@@ -94,5 +98,6 @@ def save_settings(data: dict) -> dict:
                                           "ollama_url": ollama_url, "agentic_enabled": agentic_enabled,
                                           "agentic_max_steps": agentic_max_steps,
                                           "search_mode": search_mode,
+                                          "latency_optimized": latency_optimized,
                                           "show_ai_activity": show_ai_activity}, ensure_ascii=False), encoding="utf-8")
     return get_settings()

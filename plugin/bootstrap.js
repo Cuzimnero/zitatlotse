@@ -41,7 +41,12 @@ function newSearchSession() {
 function storeResultsPage(state, data, number = 1) {
     state.resultPages[number] = {hits: data.results || [], next: data.next_offset,
         hasMore: Boolean(data.has_more)};
-    if (Number.isInteger(data.total_results) && data.total_results >= 0)
+    state.progressive = data.progressive === true;
+    state.retrievalComplete = data.retrieval_complete !== false;
+    state.scoredChunks = data.scored_chunks;
+    state.candidateCount = data.candidate_count;
+    if (state.progressive) state.totalResults = null; // Windows may contain fewer than 20 hits.
+    else if (Number.isInteger(data.total_results) && data.total_results >= 0)
         state.totalResults = data.total_results;
     else if (!data.has_more) state.totalResults = (number - 1) * RESULTS_PER_PAGE + (data.results || []).length;
 }
@@ -1130,8 +1135,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let test = add(settingsActions, "button", ui("Verbindung testen", "Test connection"), buttonStyle);
     let settingsProgress = makeProgress(settingsCard);
     add(settingsCard, "small", ui(
-        "Bei einer Cloud-Suche werden die Frage und bis zu acht Fundstellen an den gewählten Anbieter gesendet. Für Suchanfrage und Auswertung können zwei Anfragen anfallen. Ein Verbindungstest kann eine kleine Anfrage abrechnen.",
-        "Cloud search sends the question and up to eight passages to the selected provider. Query planning and result review may use two requests. A connection test may incur a small charge."),
+        "Bei einer Cloud-Suche werden die Frage und gefundene Textstellen an den gewählten Anbieter gesendet: bis zu 20 Stellen pro Chat-Auswertung, bei Pro/Kontra alle gefundenen Stellen in Paketen. Planung, Auswertung und weitere Suchrunden verursachen API-Anfragen. Ein Verbindungstest kann eine kleine Anfrage abrechnen.",
+        "Cloud search sends the question and retrieved passages to the selected provider: up to 20 per chat review, and all retrieved passages in batches for evidence assessment. Planning, review and follow-up searches use API requests. A connection test may incur a small charge."),
         "color:var(--zqs-muted);");
     let preferencesPanel = add(main, "section");
     let preferencesCard = add(preferencesPanel, "div", undefined, cardStyle);
@@ -1172,6 +1177,17 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         "Applies to new direct, AI and evidence searches. AI review and multi-step search remain available. The choice saves automatically; rebuilding the database is not required."),
         "display:block;line-height:1.5;color:var(--zqs-muted);");
     let searchModeProgress = makeProgress(speedCard);
+    let optimizedLabel = add(speedCard, "label", undefined, rowStyle + "margin-top:14px;cursor:pointer;");
+    let optimizedChoice = add(optimizedLabel, "input", undefined,
+        "appearance:auto;width:18px;height:18px;margin:0;accent-color:var(--zqs-cyan);", "zqs-latency-optimized");
+    optimizedChoice.setAttribute("type", "checkbox");
+    optimizedChoice.disabled = true;
+    add(optimizedLabel, "span", ui("Beschleunigung testen", "Try search acceleration"));
+    add(speedCard, "p", ui(
+        "Zeigt erste Treffer nach höchstens 40 Kandidaten im normalen Modus. Weitere Kandidaten können Sie danach prüfen lassen. KI-Suche: zunächst Planung und Antwort, zusätzliche Suchrunden nur bei fehlenden Belegen (höchstens 5 KI-Aufrufe). Pro/Kontra prüft weiterhin alle Funde in größeren Paketen. Ausschalten stellt den bisherigen Ablauf wieder her.",
+        "Shows initial results after at most 40 candidates in normal mode. You can then check remaining candidates. AI search starts with planning and an answer; extra searches run only when evidence is missing (at most 5 AI calls). Evidence mode still reviews every match in larger batches. Turn off to restore the previous workflow."),
+        "line-height:1.5;color:var(--zqs-muted);", "zqs-latency-hint");
+    let optimizedProgress = makeProgress(speedCard);
     let agentCard = add(preferencesPanel, "div", undefined, cardStyle);
     add(agentCard, "strong", ui("Mehrstufige KI-Suche", "Multi-step AI search"), "font-size:17px;");
     let agentLabel = add(agentCard, "label", undefined, rowStyle + "cursor:pointer;");
@@ -1453,6 +1469,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             activeSearchMode = saved.search_mode === "fast" ? "fast" : "thorough";
             searchModeChoice.value = activeSearchMode;
             searchModeChoice.disabled = false;
+            optimizedChoice.checked = saved.latency_optimized === true;
+            optimizedChoice.disabled = false;
             if (typeof saved.agentic_enabled !== "boolean") throw new Error(ui(
                 "Bitte den lokalen Suchdienst aus dem aktuellen Quellcode-Paket aktualisieren.",
                 "Update the local search service from the current source package."));
@@ -1620,6 +1638,19 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             searchModeChoice.value = activeSearchMode;
             report(ui("Speichern fehlgeschlagen: ", "Save failed: ") + error.message);
         } finally { searchModeChoice.disabled = false; searchModeProgress.stop(); }
+    });
+    optimizedChoice.addEventListener("change", async () => {
+        let selected = optimizedChoice.checked;
+        optimizedChoice.disabled = true;
+        optimizedProgress.start();
+        try {
+            let saved = await request("/settings", {latency_optimized:selected});
+            if (saved.latency_optimized !== selected) throw new Error(ui("Suchdienst aktualisieren.", "Update the search service."));
+            report(ui("Gilt ab der nächsten Suche.", "Applies to the next search."));
+        } catch (error) {
+            optimizedChoice.checked = !selected;
+            report(ui("Speichern fehlgeschlagen: ", "Save failed: ") + error.message);
+        } finally { optimizedChoice.disabled = false; optimizedProgress.stop(); }
     });
     activityEnabled.addEventListener("change", async () => {
         let previous = showAIActivity;
@@ -1939,7 +1970,24 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     const renderPagination = (mode, state, view) => {
         let nav = mode === "chat" ? chatPagination : searchPagination;
         nav.replaceChildren();
-        nav.style.display = view.count > 1 ? "flex" : "none";
+        let incomplete = state.progressive && !state.retrievalComplete;
+        nav.style.display = view.count > 1 || incomplete ? "flex" : "none";
+        if (incomplete) {
+            add(nav, "small", ui("Zwischenergebnis: ", "Partial results: ") + state.scoredChunks + " / " + state.candidateCount +
+                ui(" Kandidaten geprüft. Weitere Treffer sind möglich; angezeigte Seiten bleiben stabil.",
+                   " candidates checked. More matches may follow; displayed pages keep their order."),
+                "flex-basis:100%;text-align:center;color:var(--zqs-muted);");
+            if (view.filtered) {
+                let continueButton = add(nav, "button", ui("Weitere Kandidaten prüfen", "Check remaining candidates"), buttonStyle);
+                continueButton.disabled = state.pending || state.loadingMore;
+                continueButton.addEventListener("click", () => {
+                    state.showAll = true;
+                    notifySearchSession(currentLibraryID, mode);
+                    let all = resultsView(state, mode);
+                    goToResultsPage(mode, all.count);
+                });
+            }
+        }
         if (view.count <= 1) return;
         const pageButton = (label, number, id) => {
             let button = add(nav, "button", label, buttonStyle, id);
@@ -1963,7 +2011,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         pageButton(ui("Weiter", "Next"), view.number + 1, "zqs-" + mode + "-next");
         add(nav, "small", ui("Seite ", "Page ") + view.number +
             (view.exactCount ? ui(" von ", " of ") + view.count + " · " + view.total + ui(" Treffer", " results")
-                : ui(" · weitere Treffer verfügbar", " · more results available")),
+                : state.retrievalComplete === false ? ui(" · weitere Kandidaten verfügbar", " · more candidates available")
+                    : ui(" · alle Kandidaten geprüft", " · all candidates checked")),
             "flex-basis:100%;text-align:center;color:var(--zqs-muted);");
     };
     const relevanceTiers = [
@@ -2169,12 +2218,18 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
             "color:var(--zqs-muted);line-height:1.5;");
         if (state.hits !== null) {
             if (isChat && state.evidence) renderEvidence(container, state, view.hits);
+            else if (state.progressive && !state.retrievalComplete && !view.hits.length) add(container, "p", ui(
+                "In diesem Zwischenstand noch keine passenden Zitate. Weitere Kandidaten sind noch ungeprüft.",
+                "No matching quotes in this partial result yet. More candidates remain unchecked."));
             else if (view.filtered && !view.hits.length && state.hits.length) add(container, "p", ui(
                 "Keine von der KI ausgewählten Zitate. Mit „Alle Treffer anzeigen“ kannst du die übrigen Fundstellen ansehen.",
                 "No AI-selected quotes. Enable ‘Show all results’ to view the other passages."));
             else renderHits(container, view.hits);
             if (isChat && !state.reviewed && state.hits.length) add(container, "small", ui(
                 "Lokale Treffer – keine KI-Auswahl verfügbar.", "Local results – no AI selection available."), "color:var(--zqs-muted);");
+            if (isChat && state.progressive && state.showAll) add(container, "small", ui(
+                "Nachgeladene Seiten werden lokal geprüft. Nur ausdrücklich markierte Stellen wurden von der KI ausgewählt.",
+                "Additional pages are checked locally. Only explicitly marked passages were selected by AI."), "color:var(--zqs-muted);");
         }
         else if (!state.pending) add(container, "p", ui(
             "Hier erscheinen passende Textstellen aus dieser Bibliothek.",

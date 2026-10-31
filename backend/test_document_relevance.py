@@ -15,7 +15,7 @@ class DocumentRelevanceTest(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.engine = Engine(Path(self.folder.name) / "index.sqlite", embedder=object())
-        self.encoder = patch("document_relevance.encode_texts", return_value=np.array([[2., 0.]]))
+        self.encoder = patch("retrieval_cache.encode_texts", return_value=np.array([[2., 0.]]))
         self.encoder.start()
         self.addCleanup(self.encoder.stop)
 
@@ -80,7 +80,7 @@ class DocumentRelevanceTest(unittest.TestCase):
             self.insert(1,key,[vector])
             with self.engine._connect() as db:
                 db.execute("UPDATE documents SET language=? WHERE attachment_key=?",(language,key))
-        with patch("document_relevance.encode_texts",return_value=np.array([[0.,1.],[1.,0.],[-1.,0.]])) as encoder:
+        with patch("retrieval_cache.encode_texts",return_value=np.array([[0.,1.],[1.,0.],[-1.,0.]])) as encoder:
             result=document_relevance(self.engine,{"library_id":1,"query":"Original question",
                 "language_queries":{"en-US":"English query","de":"Deutsche Anfrage"}})
         scores={d["attachment_key"]:(d["similarity"],d["matched_query"]) for d in result["documents"]}
@@ -104,7 +104,7 @@ class DocumentRelevanceTest(unittest.TestCase):
         self.insert(1, "DUMMY", [[1,0]])
         self.insert(1, "PAPER", [[0,1]])
         compatibility = {"status":"incompatible","de":"Embedding-Modell wechseln","en":"Change embedding model"}
-        with patch("document_relevance.model_compatibility", return_value=compatibility), patch("document_relevance.encode_texts") as encoder:
+        with patch("document_relevance.model_compatibility", return_value=compatibility), patch("retrieval_cache.encode_texts") as encoder:
             result = document_relevance(self.engine, {"library_id":1,"query":"Knowledge distillation"})
         encoder.assert_not_called()
         self.assertEqual(result["model_compatibility"], compatibility)

@@ -232,6 +232,57 @@ function previewHTML(doc) {
 }
 
 (async () => {
+    // Variable-size windows must not switch to arithmetic 20-row offsets.
+    const progressiveApp = setup();
+    progressiveApp.open(7, "search");
+    progressiveApp.node("search-input").value = "Average";
+    let partialJob = progressiveApp.node("search-send").click();
+    await flush();
+    progressiveApp.pending.shift().resolve(response("First window", {progressive:true,
+        retrieval_complete:false, scored_chunks:40, candidate_count:120, total_results:null, next_offset:1}));
+    await partialJob;
+    assert.match(progressiveApp.node("search-pagination").textContent, /40.*120/);
+    partialJob = progressiveApp.node("direct-next").click();
+    await flush();
+    assert.equal(progressiveApp.pending[0].data.offset, 1);
+    progressiveApp.pending.shift().resolve(response("", {results:[], progressive:true,
+        retrieval_complete:false, scored_chunks:80, candidate_count:120, total_results:null, next_offset:1}));
+    await partialJob;
+    partialJob = progressiveApp.node("direct-next").click();
+    await flush();
+    assert.equal(progressiveApp.pending[0].data.offset, 1);
+    progressiveApp.pending.shift().resolve(response("Last window", {progressive:true,
+        retrieval_complete:true, scored_chunks:120, candidate_count:120, total_results:2, next_offset:2, has_more:false}));
+    await partialJob;
+    assert.equal(progressiveApp.node("direct-page-3").attributes["aria-current"], "page");
+    assert.match(progressiveApp.node("search-results").textContent, /Last window/);
+    assert.equal(progressiveApp.node("direct-next").disabled, true);
+    await progressiveApp.node("direct-page-1").click();
+    assert.match(progressiveApp.node("search-results").textContent, /First window/);
+    assert.equal(progressiveApp.pending.length, 0);
+    progressiveApp.open(7, "preferences");
+    await flush();
+    progressiveApp.node("latency-optimized").checked = true;
+    await progressiveApp.node("latency-optimized").fire("change");
+    assert.deepEqual(progressiveApp.settingsWrites.at(-1), {latency_optimized:true});
+    const partialChat = setup();
+    partialChat.open();
+    partialChat.node("chat-input").value = "Which experiments support this?";
+    partialJob = partialChat.node("chat-send").click();
+    await flush();
+    partialChat.pending.shift().resolve(response("", {results:[], reviewed:true, progressive:true,
+        retrieval_complete:false, scored_chunks:40, candidate_count:120, total_results:null, next_offset:0}));
+    await partialJob;
+    const continueButton = partialChat.node("chat-pagination").children.find(n => n.tag === "button");
+    assert.match(continueButton.textContent, /Weitere Kandidaten/);
+    await continueButton.click();
+    await flush();
+    assert.equal(partialChat.pending[0].data.offset, 0);
+    partialChat.pending.shift().resolve(response("Later source", {progressive:true,
+        retrieval_complete:true, total_results:1, next_offset:1, has_more:false}));
+    await flush();
+    assert.equal(partialChat.node("chat-show-all").checked, true);
+    assert.match(partialChat.node("chat-results").textContent, /Later source/);
     const app = setup();
     app.open();
     app.node("chat-input").value = "Belege für Overfitting?";

@@ -8,7 +8,7 @@ import re
 
 import numpy as np
 
-from embedding_models import encode_texts, model_compatibility
+from embedding_models import model_compatibility
 from search_scope import scope_fields
 
 
@@ -137,13 +137,8 @@ def document_relevance(engine, data):
         if compatibility["status"] == "incompatible":
             # Do not present a sentiment classifier's language bias as relevance.
             return {**summarize_documents(list(documents.values())), **context}
-        encoded = np.asarray(encode_texts(engine.embedder, model, queries, "query", engine.embedding_config), dtype=np.float32)
-        if encoded.ndim != 2 or len(encoded) != len(queries) or not np.all(np.isfinite(encoded)):
-            raise ValueError("Ungültige Suchvektoren")
-        norms = np.linalg.norm(encoded, axis=1)
-        if np.any(norms <= 0):
-            raise ValueError("Ungültige Suchvektoren")
-        query_vectors = encoded / norms[:, None]
+        cached = engine.retrieval_cache.query_vectors(engine, queries)
+        query_vectors = np.stack([cached[text] for text in queries])
         fallback_indices = [queries.index(text) for text in fallback_queries]
         document_query_indices = {}
         for key, doc in documents.items():
@@ -152,39 +147,18 @@ def document_relevance(engine, data):
             document_query_indices[key] = [queries.index(translated)] if translated else fallback_indices
         # No flag filter, cosine cutoff, BERTScore or result-page limit here.
         # The overview must include every indexed PDF in the selected scope.
-        keys = sorted(documents)
-        for start in range(0, len(keys), 400):
-            subset = keys[start:start + 400]
-            cursor = db.execute(
-                "SELECT id,attachment_key,page,embedding_blob,embedding FROM chunks "
-                "WHERE library_id=? AND attachment_key IN (" + ",".join("?" for _ in subset) + ") ORDER BY id",
-                (library_id, *subset))
-            while batch := cursor.fetchmany(1024):
-                usable, vectors = [], []
-                for row in batch:
-                    try:
-                        vector = (np.frombuffer(row["embedding_blob"], dtype="<f4")
-                                  if row["embedding_blob"] else np.asarray(json.loads(row["embedding"]), dtype=np.float32))
-                    except (ValueError, TypeError):
-                        continue
-                    if vector.ndim != 1 or vector.size != query_vectors.shape[1] or not np.all(np.isfinite(vector)):
-                        continue
-                    norm = np.linalg.norm(vector)
-                    if norm <= 0:
-                        continue
-                    usable.append(row)
-                    vectors.append(vector / norm)
-                if not usable:
-                    continue
-                cosine = np.clip(np.stack(vectors) @ query_vectors.T, -1, 1)
-                for i, row in enumerate(usable):
-                    # A high score for an unrelated language's query must not win.
-                    strongest_query = max(document_query_indices[row["attachment_key"]], key=lambda j: cosine[i,j])
-                    score = float(cosine[i, strongest_query])
-                    doc = documents[row["attachment_key"]]
-                    if doc["similarity"] is None or score > doc["similarity"]:
-                        doc.update(similarity=score, chunk_id=row["id"], page=row["page"],
-                                   matched_query=queries[strongest_query])
+        for rows, matrix in engine.retrieval_cache.batches(engine, db, library_id, set(documents)):
+            if matrix.shape[1] != query_vectors.shape[1]:
+                continue
+            cosine = np.clip(matrix @ query_vectors.T, -1, 1)
+            for i, row in enumerate(rows):
+                # Only the document's language variants may determine its score.
+                strongest_query = max(document_query_indices[row["attachment_key"]], key=lambda j: cosine[i,j])
+                score = float(cosine[i, strongest_query])
+                doc = documents[row["attachment_key"]]
+                if doc["similarity"] is None or score > doc["similarity"]:
+                    doc.update(similarity=score, chunk_id=row["id"], page=row["page"],
+                               matched_query=queries[strongest_query])
         result = summarize_documents(list(documents.values()))
         for doc in result["documents"]:
             if doc["similarity"] is not None:

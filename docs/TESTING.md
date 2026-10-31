@@ -1,6 +1,6 @@
 # Extended test harness
 
-Run `python run_tests.py` from the repository with `requirements-dev.txt` installed and Node.js available. For candidate archive verification and the isolated Windows setup/process-loss test, use `python run_tests.py --xpi dist/Zitatlotse-0.29.0.xpi --startup`.
+Run `python run_tests.py` from the repository with `requirements-dev.txt` installed and Node.js available. For candidate archive verification and the isolated Windows setup/process-loss test, use `python run_tests.py --xpi dist/Zitatlotse-0.30.0.xpi --startup`.
 
 The runner produces per-method JSON and Markdown reports, individual logs and an optional disposable runtime installation under a new `outputs/test-runs` directory. It returns a nonzero exit code on failures. Existing output directories are never reused.
 
@@ -31,7 +31,7 @@ These tests use temporary/synthetic data and simulated encoders or provider resp
 ```powershell
 python build_runtime.py
 python package.py
-.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.29.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
+.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.30.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
 ```
 
 The check installs the bundled runtime in a separate test folder, removes Python from `PATH` and blocks model downloads. It checks actual service availability, progress, recovery after complete process loss and preservation of the test database. It does not use the regular installation on port 8765 or make cloud requests. It does not reboot the operating system.

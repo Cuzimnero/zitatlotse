@@ -2,6 +2,8 @@
 
 [Project page](../README.md) · [Technical architecture](ARCHITECTURE.md)
 
+With acceleration enabled (default), normal chat starts with planning and review; native follow-up runs only if evidence is missing. Initial BERTScore results are provisional and can be continued. Evidence mode still assesses all retrieved passages. [Limits](PERFORMANCE-EXPERIMENT.md).
+
 ## Install and restart
 
 ```mermaid

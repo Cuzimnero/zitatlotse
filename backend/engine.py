@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 from embedding_models import encode_texts, load_model
 from search_scope import scope_fields, scope_matches
+from retrieval_cache import RetrievalCache
 
 
 EMBED_MODEL = os.environ.get("ZQS_EMBED_MODEL", "intfloat/multilingual-e5-small")
@@ -247,6 +248,7 @@ class Engine:
         self._embedder = embedder
         self._scorer = scorer
         self._search_sessions: dict[str, dict] = {}
+        self.retrieval_cache = RetrievalCache()
         self.rebuilding = False
         with self._connect() as db:
             db.executescript("""
@@ -333,6 +335,8 @@ class Engine:
         try:
             yield db
             db.commit()
+            if db.total_changes:
+                self.retrieval_cache.invalidate()
         except Exception:
             db.rollback()
             raise
@@ -454,9 +458,8 @@ class Engine:
             return []
         target_queries = lambda language: list(dict.fromkeys(filter(None, (
             queries.get(language or "und") or queries.get("default") or query, query))))
-        query_vectors = {text: np.asarray(list(encode_texts(self.embedder, self.model_name,
-            [text], "query", self.embedding_config)[0]), dtype=np.float32)
-            for text in {text for doc in docs for text in target_queries(doc["language"])}}
+        query_vectors = self.retrieval_cache.query_vectors(self,
+            [text for doc in docs for text in target_queries(doc["language"])])
         document_info = {}
         document_scores = []
         for doc in docs:
@@ -490,41 +493,28 @@ class Engine:
             selected.update(key for score, _, key in ordered
                             if score >= best_score - FLAG_PREFILTER_MAX_GAP)
         ranked = []
-        selected_keys = sorted(selected & document_info.keys())
-        for start in range(0, len(selected_keys), 400):
-            keys = selected_keys[start:start + 400]
-            placeholders = ",".join("?" for _ in keys)
-            columns = "id,attachment_key,embedding_blob" + (",text" if literal_pattern else "")
-            cursor = db.execute("SELECT " + columns + " FROM chunks WHERE library_id=? "
-                                "AND attachment_key IN (" + placeholders + ")",
-                                (library_id, *keys))
-            while batch := cursor.fetchmany(1024):
-                groups = {}
-                for row in batch:
-                    variants = document_info.get(row["attachment_key"])
-                    if not variants or not row["embedding_blob"]:
+        selected_keys = selected & document_info.keys()
+        for rows, matrix in self.retrieval_cache.batches(self, db, library_id, selected_keys):
+            best = {}
+            for current_query, query_vector in query_vectors.items():
+                if matrix.shape[1] != query_vector.size:
+                    continue
+                scores = matrix @ query_vector
+                for row, score in zip(rows, scores):
+                    variants = dict(document_info[row["attachment_key"]])
+                    if current_query not in variants:
                         continue
-                    vector = np.frombuffer(row["embedding_blob"], dtype="<f4")
+                    priority = variants[current_query]
                     literal = literal_contains(literal_pattern, row["text"]) if literal_pattern else False
-                    for current_query, priority in variants:
-                        if vector.size == query_vectors[current_query].size:
-                            groups.setdefault(current_query, []).append(
-                                (row["id"], vector, priority, literal))
-                best = {}
-                for current_query, entries in groups.items():
-                    matrix = np.stack([entry[1] for entry in entries])
-                    scores = matrix @ query_vectors[current_query]
-                    for score, (item_id, _, priority, literal) in zip(scores, entries):
-                        candidate = (float(score), item_id, current_query, literal)
-                        if evidence_mode:
-                            ranked.append(candidate)
-                            continue
-                        previous = best.get(item_id)
-                        if (previous is None or candidate[0] > previous[0][0] + 0.005
-                                or (abs(candidate[0] - previous[0][0]) <= 0.005
-                                    and priority < previous[1])):
-                            best[item_id] = (candidate, priority)
-                ranked.extend(candidate for candidate, _ in best.values())
+                    candidate = (float(score), row["id"], current_query, literal)
+                    if evidence_mode:
+                        ranked.append(candidate)
+                        continue
+                    previous = best.get(row["id"])
+                    if (previous is None or candidate[0] > previous[0][0] + 0.005
+                            or (abs(candidate[0] - previous[0][0]) <= 0.005 and priority < previous[1])):
+                        best[row["id"]] = (candidate, priority)
+            ranked.extend(candidate for candidate, _ in best.values())
         if not ranked:
             return []
         if evidence_mode:
@@ -558,13 +548,13 @@ class Engine:
         ranked.sort(key=lambda entry: (-entry[0], entry[1]))
         return ranked
 
-    def _fill_search_session(self, db, session: dict) -> None:
-        """Process every cosine candidate; fast sessions never load BERTScore."""
+    def _fill_search_session(self, db, session: dict, max_candidates=None) -> None:
+        """Append a bounded window, preserving already published page positions."""
         fast = session.get("search_mode", "thorough") == "fast"
-        while session["cursor"] < len(session["ranked"]):
-            if session["cursor"] >= len(session["ranked"]):
-                break
-            window = session["ranked"][session["cursor"]:session["cursor"] + RERANK_BATCH]
+        stop = min(len(session["ranked"]), session["cursor"] + max_candidates) if max_candidates else len(session["ranked"])
+        published = session.get("published", 0)
+        while session["cursor"] < stop:
+            window = session["ranked"][session["cursor"]:min(stop, session["cursor"] + RERANK_BATCH)]
             session["cursor"] += len(window)
             ids = [entry[1] for entry in window]
             placeholders = ",".join("?" for _ in ids)
@@ -676,7 +666,8 @@ class Engine:
                         break
                 if quote is None:
                     continue
-        session["hits"].sort(key=lambda hit: (-hit["score"], hit["id"], hit["quote"]))
+        session["hits"][published:] = sorted(session["hits"][published:],
+            key=lambda hit: (-hit["score"], hit["id"], hit["quote"]))
 
     def search_page(self, data: dict) -> dict:
         import pymupdf
@@ -721,11 +712,19 @@ class Engine:
                            if literal_term else None) if evidence_mode else direct_literal_pattern(query)
                 has_literal = bool(pattern and any(entry[3] for entry in ranked))
                 allowed = set(scope["attachment_keys"]) if "attachment_keys" in scope else None
+                # Keep lexical weights independent of the progressive window size.
+                # Otherwise switching from 64 to 40 BERT candidates also changes
+                # relevance thresholds and can discard different later passages.
+                sample_ids = [entry[1] for entry in ranked[:RERANK_BATCH]]
+                sample = db.execute("SELECT text FROM chunks WHERE library_id=? AND id IN (" +
+                    ",".join("?" for _ in sample_ids) + ")", (library_id, *sample_ids)).fetchall() if sample_ids else []
                 session = {"library_id": library_id, **scope, "ranked": ranked, "cursor": 0,
                            "hits": [], "seen": set(), "seen_locations": set(), "recent": [],
-                           "touched": now, "term_frequency": None, "term_sample_size": 0,
+                           "touched": now, "term_frequency": Counter(key for row in sample for key in lexical_keys(row["text"])),
+                           "term_sample_size": len(sample),
                            "query": query, "queries": queries,
                            "evidence_mode": evidence_mode, "search_mode": search_mode,
+                           "progressive": data.get("progressive") is True and search_mode != "fast",
                            "literal_pattern": pattern if has_literal else None,
                            "literal_only": has_literal and (evidence_mode or len(query.split()) == 1),
                            "total_chunks": sum(row["count"] for row in db.execute(
@@ -738,7 +737,8 @@ class Engine:
             if offset > len(session["hits"]):
                 raise ValueError("Ungültige Trefferposition. Bitte erneut suchen.")
             session["touched"] = now
-            self._fill_search_session(db, session)
+            if not session.get("progressive") or len(session["hits"]) < offset + limit:
+                self._fill_search_session(db, session, 40 if session.get("progressive") else None)
             page_hits = session["hits"][offset:offset + limit]
             for hit in page_hits:
                 if "position" not in hit:
@@ -748,11 +748,16 @@ class Engine:
                     except Exception:
                         hit["position"] = {"pageIndex": hit["page"] - 1}
             next_offset = offset + len(page_hits)
+            if session.get("progressive"):
+                session["published"] = max(session.get("published", 0), next_offset)
+            complete = session["cursor"] >= len(session["ranked"])
             return {"results": [{key: value for key, value in hit.items() if key != "_pdf_path"}
                                 for hit in page_hits],
                     "search_id": token, "next_offset": next_offset,
-                    "has_more": next_offset < len(session["hits"]),
-                    "total_results": len(session["hits"]),
+                    "has_more": next_offset < len(session["hits"]) or not complete,
+                    "total_results": len(session["hits"]) if complete else None,
+                    "retrieval_complete": complete, "progressive": session.get("progressive", False),
+                    "candidate_count": len(session["ranked"]),
                     "search_mode": session.get("search_mode", "thorough"),
                     "scored_chunks": session["cursor"], "total_chunks": session["total_chunks"]}
 

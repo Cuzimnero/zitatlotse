@@ -52,7 +52,7 @@ The main tables are `documents`, `chunks`, `saved_quotes` and `index_metadata`. 
 1. **Set scope:** one library ID and optionally a fixed attachment list for a collection. An empty list stays empty.
 2. **Coarse document filter:** for larger libraries, remove documents that appear especially distant. At least 85% are generally retained; matching topic features may retain additional documents. Short single-term queries bypass this exclusion.
 3. **Cosine:** compare the query with every chunk in the remaining documents. Pass candidates within 0.06 of the best direct-search score to the next stage. Handle multilingual and AI query variants so that a stronger variant does not displace a suitable result from another variant.
-4. **Optional BERTScore:** normal mode (default) reranks all qualifying candidates in bounded batches. The combined ordering uses 65% BERTScore and 35% cosine. Fast mode never loads/calls BERTScore; its ordering uses cosine alone and reports `bert_score: null`, with a broad cosine floor of 0.50 (or the existing model-specific floor). These scores are not interchangeable with the thorough mixed scores.
+4. **Optional BERTScore:** normal mode reranks qualifying candidates in bounded batches. With acceleration enabled (default), initially score up to 40 and retain the remainder for pagination; published pages keep their order. The combined ordering uses 65% BERTScore and 35% cosine. Fast mode never loads/calls BERTScore; its ordering uses cosine alone and reports `bert_score: null`, with a broad cosine floor of 0.50 (or the existing model-specific floor). These scores are not interchangeable with the thorough mixed scores.
 5. **Validate and deduplicate:** apply relevance thresholds, literal-query cases and model-specific rules; remove repeated original passages. A matching short literal query should retain distinct real occurrences.
 6. **Paginate:** store verified results and search state; show at most 20 quotations per UI page. Search states expire after 900 seconds.
 
@@ -64,7 +64,9 @@ The persisted `search_mode` setting is either `thorough` or `fast`. The HTTP ser
 
 ## AI and evidence layer
 
-One-step AI search formulates query variants in document languages, uses the local search flow and reviews a limited set of original passages. Multi-step search lets a model make real `search_library` calls. Each step can include up to eight original passages from retrieved candidates in the model context. `finish_search` refers to validated sources.
+Acceleration starts normal chat with planning and review, adding native follow-up only if evidence is missing. A shared five-request budget includes retries. Evidence assessment remains complete, using size-bounded batches of up to 24 passages; it is exempt from that chat ceiling. [Details](PERFORMANCE-EXPERIMENT.md).
+
+One-step AI search formulates query variants in document languages, uses the local search flow and reviews a limited set of original passages. Multi-step search lets a model make real `search_library` calls. Each step can include up to 20 original passages from retrieved candidates in the model context. `finish_search` refers to validated sources.
 
 The service enforces the step limit, reuse of identical queries, reference validation, fixed scope and a time budget. The AI cannot expand the scope on its own. If tool calls are unavailable or invalid, the service falls back to one-step search with a notice.
 
@@ -94,4 +96,4 @@ Zotero starts the service when the add-on loads, the window opens or the connect
 
 ## Scaling
 
-Cosine comparison is still an exact vector scan; its cost grows with the number of chunks considered. BERTScore is significantly more expensive, so it runs only after cosine selection. An ANN index, better batching/cache strategies and validated relevance thresholds are possible next steps, not completed features.
+Cosine comparison is still an exact vector scan; its cost grows with the number of chunks considered. BERTScore is significantly more expensive, so it runs only after cosine selection. Query embeddings use a 128-entry LRU; reusable vector matrices have a 64 MiB budget and otherwise stream. Database/model changes invalidate matrix snapshots. An ANN index and broader relevance calibration remain future work.

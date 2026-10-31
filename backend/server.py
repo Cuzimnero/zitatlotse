@@ -34,6 +34,7 @@ from search_activity import SearchJobs, SearchCancelled
 from search_scope import scope_fields, scoped_languages, check_hit_scope
 from document_relevance import document_relevance
 from provider_models import discover_models
+from search_budget import call_budget, take_call
 
 engine = Engine()
 embedding_manager = EmbeddingManager(engine)
@@ -65,7 +66,10 @@ def call_llm(prompt: str, settings: dict) -> str:
         payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
                    "response_format": {"type": "json_object"}, "max_tokens": 4096}
         if provider == "deepseek":
-            payload.update(max_tokens=16384, thinking={"type":"enabled"}, reasoning_effort="low")
+            if settings.get("latency_optimized") and settings.get("_purpose") == "planning":
+                payload.update(max_tokens=2048, thinking={"type":"disabled"})
+            else:
+                payload.update(max_tokens=16384, thinking={"type":"enabled"}, reasoning_effort="low")
         else:
             # Newer OpenAI reasoning models reject the legacy max_tokens field.
             payload["max_completion_tokens"] = payload.pop("max_tokens")
@@ -76,7 +80,7 @@ def call_llm(prompt: str, settings: dict) -> str:
     req = urllib.request.Request(url, json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     for attempt in range(2 if provider == "ollama" else 1):
         try:
-            with urllib.request.urlopen(req, timeout=120) as response:
+            with urllib.request.urlopen(req, timeout=take_call(120)) as response:
                 answer = json.load(response)
             break
         except urllib.error.HTTPError as exc:
@@ -171,9 +175,21 @@ def review_chat_results(question: str, results: list[dict], settings: dict,
 
 
 def chat_search(data: dict, progress=lambda **_: None) -> dict:
+    settings = get_settings()
+    if not settings.get("latency_optimized") or data.get("mode") == "evidence":
+        return _chat_search(data, progress, settings)
+    started = time.monotonic()
+    with call_budget(5, 180) as budget:
+        result = _chat_search(data, progress, settings)
+        result["performance"] = {"model_calls": budget.used, "call_limit": budget.limit,
+                                 "elapsed_seconds": round(time.monotonic() - started, 3)}
+        return result
+
+
+def _chat_search(data: dict, progress, settings: dict) -> dict:
     """Reformulate, search, then summarize supported passages in one library."""
     if data.get("mode") == "evidence":
-        return evidence_search(data, engine, get_settings(), get_key, call_llm, progress)
+        return evidence_search(data, engine, settings, get_key, call_llm, progress)
     question = str(data.get("message", "")).strip()[:2000]
     if not question:
         raise ValueError("Suchfrage fehlt")
@@ -194,12 +210,12 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
     used_ai = False
     plan_reply = ""
     warning = ""
-    settings = get_settings()
+    optimized = settings.get("latency_optimized", False)
     targets = sorted(code for code in languages if code != "und")
     history = [{"role": entry.get("role"), "content": str(entry.get("content", ""))[:1000]}
                for entry in data.get("history", [])[-6:]
                if isinstance(entry, dict) and entry.get("role") in {"user", "assistant"}]
-    if settings.get("agentic_enabled", False) and settings["provider"] != "none":
+    if not optimized and settings.get("agentic_enabled", False) and settings["provider"] != "none":
         try:
             return agentic_search(data, engine, settings, get_key, languages, progress)
         except SearchCancelled:
@@ -226,7 +242,7 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
         )
         try:
             progress(event={"type":"model_call", "purpose":"planning"})
-            raw = call_llm(prompt, settings).strip()
+            raw = call_llm(prompt, {**settings, "_purpose":"planning"}).strip()
             if raw.startswith("```"):
                 raw = raw.strip("`").removeprefix("json").strip()
             plan = json.loads(raw)
@@ -253,8 +269,9 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
     page = engine.search_page({"library_id": library_id, **scope, "query": question,
                                "search_mode": settings.get("search_mode", "thorough"),
                                "queries": queries, "limit": data.get("limit", 20),
+                               "progressive": optimized,
                                "retrieval_mode":"ai" if settings["provider"] != "none" else "direct"})
-    progress(event={"type":"search_results", "count":page.get("total_results", len(page["results"]))})
+    progress(event={"type":"search_results", "count":page.get("total_results") or len(page["results"])})
     results = page["results"]
     for hit in results: check_hit_scope(hit, scope)
     literal_results = []
@@ -294,9 +311,10 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
                        for index, hit in enumerate(results, start=1)]
             if not chosen:
                 results = []
-                page["has_more"] = False
-                page["next_offset"] = 0
-                page["search_id"] = ""
+                if page.get("retrieval_complete", True):
+                    page["has_more"] = False
+                    page["next_offset"] = 0
+                    page["search_id"] = ""
             reply = answer
             reviewed = True
             used_ai = True
@@ -307,6 +325,7 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
             # Broader AI candidates may only be shown after a valid review.
             # If the provider fails, fall back to the stricter local retrieval.
             page = engine.search_page({"library_id":library_id, **scope, "query":question,
+                                       "progressive":optimized,
                                        "search_mode":settings.get("search_mode", "thorough"),
                                        "queries":queries, "limit":data.get("limit",20), "retrieval_mode":"direct"})
             results = page["results"]
@@ -319,6 +338,25 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
                 "KI-Auswertung fehlgeschlagen; streng gefilterte lokale Suche verwendet: " + str(exc)
                 if ui_lang == "de" else
                 "AI result review failed; using strictly filtered local search: " + str(exc))
+    # Try native tools only when the first pass found no supported answer.
+    # Planning + review + native calls share one hard per-request budget.
+    if optimized and not keyword and not any(hit.get("recommended") for hit in results) and \
+            settings.get("agentic_enabled") and settings["provider"] != "none" and not warning:
+        try:
+            answer = agentic_search({**data, "previous_queries": list(queries.values())}, engine,
+                {**settings, "agentic_max_steps":min(2, settings.get("agentic_max_steps", 3)),
+                 "model_call_limit":3}, get_key, languages, progress)
+            if answer.get("selected_results"):
+                return answer
+        except SearchCancelled:
+            raise
+        except Exception as exc:
+            warning = (("Zusätzliche Suche beendet: " if ui_lang == "de" else "Additional search stopped: ") + str(exc))
+    if not page.get("retrieval_complete", True):
+        warning += ("\n" if warning else "") + (
+            "Erste Kandidaten geprüft; weitere Textstellen sind noch ungeprüft. Unter ‚Alle Treffer anzeigen‘ können Sie die Suche fortsetzen."
+            if ui_lang == "de" else
+            "First candidates reviewed; more passages are still unchecked. Use 'Show all results' to continue the search.")
     if plan_reply:
         reply = plan_reply + "\n" + reply
     return {"reply": reply, "queries": queries, "results": results, "used_ai": used_ai,
@@ -326,7 +364,8 @@ def chat_search(data: dict, progress=lambda **_: None) -> dict:
             "ai_configured": settings["provider"] != "none", "reviewed": reviewed,
             "languages": languages, "warning": warning,
             "search_id": page["search_id"], "next_offset": page["next_offset"],
-            "has_more": page["has_more"], "total_chunks": page["total_chunks"]}
+            "has_more": page["has_more"], "total_chunks": page["total_chunks"],
+            **{key:page[key] for key in ("progressive", "retrieval_complete", "scored_chunks", "candidate_count") if key in page}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -347,7 +386,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             self._send(200, {"ok": True, "service": "zitatlotse", "llm": get_settings()["provider"],
-                             "version": "0.29.0",
+                             "version": "0.30.0",
                              "models_cached": MODELS_CACHED})
         elif parsed.path == "/settings":
             self._send(200, get_settings())
@@ -376,7 +415,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = engine.index_pdf(data)
             elif self.path == "/search":
                 result = (result_store.page(data) if str(data.get("search_id", "")).startswith("agent-")
-                          else engine.search_page({**data, **({"search_mode":get_settings()["search_mode"]}
+                          else engine.search_page({**data, **({"search_mode":get_settings()["search_mode"],
+                                                               "progressive":get_settings().get("latency_optimized", False)}
                                if not data.get("search_id") else {})}))
             elif self.path == "/document-relevance":
                 result = document_relevance(engine, data)

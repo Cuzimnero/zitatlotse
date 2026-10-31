@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-As of **0.28.0 (local test candidate)**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
+As of **0.30.0**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
 
 ## 1. Zotero interface
 
@@ -49,6 +49,8 @@ Topic features are an automatically generated local search aid. They are not an 
 - Cancel in-flight queries or discard late responses when the scope changes.
 - Search state must not be reused for a different library or a different file selection.
 
+Acceleration is enabled by default: earlier provisional results, cached vectors and fewer AI requests. [Behavior and limits](PERFORMANCE-EXPERIMENT.md).
+
 ## 5. Direct search
 
 - Runs without a cloud LLM: coarse topic prefilter and cosine comparison across all remaining chunks. Normal mode then reranks with BERTScore; fast mode skips BERTScore.
@@ -83,7 +85,7 @@ The AI sees a limited set of retrieved candidates. **All results** does not mean
 - Stay within the library and collection scope set by the service.
 - Merge results from different steps and deduplicate passages.
 - Reuse identical queries already run for the current question.
-- Enable or disable the feature; set a limit of 1–6 search steps, default 3.
+- Enable or disable the feature; set a limit of 1–6 search steps, default 3. Acceleration uses at most two follow-up searches within its shared chat-call budget.
 - Limit agent steps with a time budget; an ongoing local computation may outlast this budget.
 - If tool calls are unsupported or the response is invalid, show a notice and fall back to the one-step flow.
 - Optional activity view shows events such as query planned, model called, local search started, results returned, another tool call and completion.
