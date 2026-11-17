@@ -4,7 +4,7 @@
 
 **Your library. Your models. Evidence inside Zotero.**
 
-Find original passages, compare supporting and opposing evidence, and save quotations directly in Zotero.
+Zitatlotse is an open-source [Zotero](https://www.zotero.org/) add-on for searching, reviewing and saving evidence from your PDF library.
 
 **Zotero 10 · Windows x64 · v0.30.0 · Experimental · MIT project code**
 
