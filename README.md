@@ -1,6 +1,6 @@
 <p align="center"><img src="plugin/search.svg" width="72" alt="Zitatlotse logo"></p>
 
-# Zitatlotse
+# Zitatlotse — AI search and PDF quotations for Zotero
 
 **Your library. Your models. Evidence inside Zotero.**
 
