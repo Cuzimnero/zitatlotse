@@ -119,14 +119,17 @@ def verify_xpi(path, version):
         if normalize(archive.read("bootstrap.js")) != normalize((ROOT/"plugin/bootstrap.js").read_bytes()):
             raise ValueError("XPI UI differs from tested working tree")
         for entry, key in (("runtime/backend.zip","backend_sha256"),("runtime/python.zip","runtime_sha256")):
-            if hashlib.sha256(archive.read(entry)).hexdigest() != meta[key]:
-                raise ValueError("Payload checksum mismatch: " + entry)
+            with archive.open(entry) as payload:
+                if hashlib.file_digest(payload, "sha256").hexdigest() != meta[key]:
+                    raise ValueError("Payload checksum mismatch: " + entry)
         with ZipFile(io.BytesIO(archive.read("runtime/backend.zip"))) as backend:
             for source in (ROOT / "backend").glob("*.py"):
                 if not source.name.startswith(("test_", "smoke_", "diagnose_")):
                     if normalize(backend.read(source.name)) != normalize(source.read_bytes()):
                         raise ValueError("XPI backend differs from source: " + source.name)
-    return {"id":"xpi_integrity","status":"passed","sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"id":"xpi_integrity","status":"passed","sha256":digest}
 
 
 def main():
@@ -134,6 +137,7 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--xpi", type=Path, help="Also verify this exact candidate against tested sources")
     parser.add_argument("--startup", action="store_true", help="Exercise XPI setup and process-loss restart")
+    parser.add_argument("--keep-runtime", action="store_true", help="Retain extracted runtime after a successful startup test")
     parser.add_argument("--port", type=int, default=19765, help="Separate test service port")
     args = parser.parse_args()
     if args.startup and (not args.xpi or os.name != "nt"):
@@ -165,7 +169,7 @@ def main():
                     result = unittest.TextTestRunner(stream=log,verbosity=2,resultclass=RecordingResult).run(suite)
                 report["tests"] = result.records
                 report["python_success"] = result.wasSuccessful()
-        for script in ("test_plugin.js", "test_search_session.js", "test_runtime.js"):
+        for script in ("test_plugin.js", "test_search_session.js", "test_runtime.js", "test_processing_column.js"):
             report["stages"].append(command_stage(script.removesuffix(".js"), ["node",script], output))
         if args.xpi:
             try: report["stages"].append(verify_xpi(args.xpi.resolve(), version))
@@ -177,7 +181,8 @@ def main():
                                HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", ZQS_LLM_PROVIDER="none")
             report["stages"].append(command_stage("startup_process_loss", ["powershell.exe","-NoProfile",
                 "-NonInteractive","-ExecutionPolicy","Bypass","-File",str(ROOT/"test_runtime_setup.ps1"),
-                "-Xpi",str(args.xpi.resolve()),"-TestRoot",str(output/"startup"),"-Port",str(args.port)],output,timeout=300,environment=startup_env))
+                "-Xpi",str(args.xpi.resolve()),"-TestRoot",str(output/"startup"),"-Port",str(args.port)] +
+                (["-KeepRuntime"] if args.keep_runtime else []),output,timeout=300,environment=startup_env))
     except Exception as error:
         report["stages"].append({"id":"test_setup","status":"error","details":repr(error)})
     finally:

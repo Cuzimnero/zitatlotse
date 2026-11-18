@@ -1,4 +1,27 @@
 """A fixed search scope, supplied from Zotero's current collection membership."""
+import re
+
+
+def validate_search_language(value):
+    if not isinstance(value, str):
+        raise ValueError("Ungültige Suchsprache")
+    value = value.strip().lower().replace("_", "-")
+    if value == "auto":
+        return value
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z0-9]{2,8})*", value) or value in {"all", "und"}:
+        raise ValueError("Ungültige Suchsprache")
+    return value.split("-")[0]
+
+
+def selected_search_language(data, settings):
+    return validate_search_language(data.get("search_language", settings.get("search_language", "auto")))
+
+
+def query_languages(languages, selection):
+    """Choose query languages, preserving the full document search scope."""
+    if selection != "auto":
+        return {selection: sum(languages.values())} if languages else {}
+    return {code: count for code, count in languages.items() if code != "und"}
 
 def scope_fields(data):
     collection = data.get("collection_id", 0)

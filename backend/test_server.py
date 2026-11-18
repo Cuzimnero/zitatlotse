@@ -113,6 +113,35 @@ class ProviderTest(unittest.TestCase):
         self.assertFalse(result["reviewed"])
         llm.assert_not_called()
 
+    def test_manual_language_overrides_settings_and_excludes_other_plans(self):
+        hit = {"id":1, "library_id":1, "attachment_key":"A", "title":"Study", "page":1,
+               "quote":"Validation error was measured."}
+        options = {"provider":"ollama", "agentic_enabled":False, "search_language":"de"}
+        with patch.object(server, "get_settings", return_value=options), \
+                patch.object(server.engine, "languages", return_value={"en":2, "de":1}), \
+                patch.object(server.engine, "search_page", return_value={"results":[hit], "search_id":"s",
+                    "next_offset":1, "has_more":False, "total_chunks":3}) as search, \
+                patch.object(server, "call_llm", side_effect=[
+                    '{"queries":{"en":"validation error","de":"Validierungsfehler"}}',
+                    '{"answer":"Ergebnis [1].","has_evidence":true,"selected_refs":[1]}']):
+            result = server.chat_search({"library_id":1, "collection_id":10, "attachment_keys":["A"],
+                "message":"Wert", "ui_lang":"de", "search_language":"en"})
+        args = search.call_args.args[0]
+        self.assertEqual(args["query"], "validation error")
+        self.assertEqual(set(args["queries"].values()), {"validation error"})
+        self.assertEqual(args["attachment_keys"], ["A"])
+        self.assertEqual(result["search_language"], "en")
+        self.assertIn("Ergebnis", result["reply"])
+
+    def test_manual_language_missing_translation_never_searches_original(self):
+        with patch.object(server, "get_settings", return_value={"provider":"ollama", "agentic_enabled":False}), \
+                patch.object(server.engine, "languages", return_value={"en":2}), \
+                patch.object(server.engine, "search_page") as search, \
+                patch.object(server, "call_llm", return_value='{"queries":{"de":"Deutsche Suchfrage"}}'):
+            with self.assertRaisesRegex(ValueError, "gewählte Sprache"):
+                server.chat_search({"library_id":1, "message":"Wie wurde der Fehler gemessen?", "ui_lang":"de", "search_language":"en"})
+        search.assert_not_called()
+
     def test_review_rejects_unlinked_claims(self):
         answer = '{"answer":"Ein unbelegter Satz.","has_evidence":true,"selected_refs":[1]}'
         hits = [{"id": 1, "title": "Test", "page": 1, "quote": "A source quote."}]

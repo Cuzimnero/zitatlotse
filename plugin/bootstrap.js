@@ -12,6 +12,16 @@ const HTML = "http://www.w3.org/1999/xhtml";
 const XUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 let registeredSection;
 let observerID;
+let registeredProcessingColumn;
+let processingRefreshTimer;
+let processingFetchTimer;
+const processingRecords = new Map();
+const processingPending = new Map();
+const processingInFlight = new Set();
+const processingBusy = new Set();
+const processingErrors = new Set();
+const processingChildLoads = new Set();
+const processingRowJobs = new Set();
 let pluginRoot;
 let serviceLaunchPromise;
 let serviceProcess;
@@ -459,7 +469,8 @@ async function loadDocumentOverview(libraryID, mode, state, question, languageQu
         if (!current()) return;
         // Compare the current question with every chunk. No retrieval cutoffs or
         // AI quote selection affect this independent document overview.
-        let data = await request("/document-relevance", {library_id:libraryID,...scope,query:question,language_queries:languageQueries});
+        let data = await request("/document-relevance", {library_id:libraryID,...scope,query:question,
+            language_queries:languageQueries,search_language:state.searchLanguage || "auto"});
         if (!current()) return;
         for (let document of data.documents) {
             let item = Zotero.Items.getByLibraryAndKey(libraryID, document.attachment_key);
@@ -503,8 +514,363 @@ function activityLabel(event) {
     }
 }
 
+function processingKey(item) { return item.libraryID + ":" + item.key; }
+
+function refreshProcessingColumn() {
+    if (!registeredProcessingColumn || serviceStopping || processingRefreshTimer) return;
+    processingRefreshTimer = setTimeout(() => {
+        processingRefreshTimer = null;
+        if (!serviceStopping) Zotero.ItemTreeManager?.refreshColumns();
+    }, 80);
+}
+
+function queueProcessingCheck(attachment) {
+    let key = processingKey(attachment);
+    let record = processingRecords.get(key);
+    if (record && Date.now() - record.touched < 60000) return record;
+    record = {state:"checking", touched:Date.now(), item:attachment};
+    processingRecords.set(key, record);
+    while (processingRecords.size > 5000) processingRecords.delete(processingRecords.keys().next().value);
+    if (!processingPending.has(attachment.libraryID)) processingPending.set(attachment.libraryID, new Map());
+    processingPending.get(attachment.libraryID).set(key, record);
+    scheduleProcessingFetch();
+    return record;
+}
+
+function scheduleProcessingFetch() {
+    if (serviceStopping || processingFetchTimer) return;
+    processingFetchTimer = setTimeout(() => {
+        processingFetchTimer = null;
+        for (let libraryID of processingPending.keys()) {
+            if (!processingInFlight.has(libraryID)) fetchProcessingBatch(libraryID).catch(error => Zotero.logError(error));
+        }
+    }, 50);
+}
+
+async function fetchProcessingBatch(libraryID) {
+    let pending = processingPending.get(libraryID);
+    if (!pending?.size || processingInFlight.has(libraryID)) return;
+    let batch = [...pending.entries()].slice(0, 200);
+    for (let [key] of batch) pending.delete(key);
+    if (!pending.size) processingPending.delete(libraryID);
+    processingInFlight.add(libraryID);
+    const current = (key, record) => !serviceStopping && processingRecords.get(key) === record;
+    try {
+        let data = await request("/processing/status", {library_id:libraryID,
+            attachment_keys:batch.map(([, record]) => record.item.key)}, {timeout:5000});
+        if (data.library_id !== libraryID || !Array.isArray(data.documents)) throw new Error("Invalid processing status");
+        let documents = new Map(data.documents.map(record => [record.attachment_key, record]));
+        let cursor = 0;
+        const worker = async () => {
+            while (cursor < batch.length) {
+                let [key, record] = batch[cursor++];
+                if (!current(key, record)) continue;
+                let stored = documents.get(record.item.key);
+                let state = stored ? "no_text" : "unprocessed";
+                try {
+                    let path = await record.item.getFilePathAsync();
+                    if (!path) state = "unavailable";
+                    else {
+                        let info = await IOUtils.stat(path);
+                        if (!info.size) state = "unavailable";
+                        else if (stored) {
+                            record.indexedSize = stored.file_size;
+                            record.indexedMtime = stored.file_mtime;
+                            let unchanged = info.size === stored.file_size && Math.abs(info.lastModified - stored.file_mtime * 1000) <= 2;
+                            state = !unchanged ? "outdated" : stored.chunks > 0 ? "processed" : "no_text";
+                        }
+                    }
+                } catch (_) { state = "unavailable"; }
+                if (current(key, record)) { record.state = state; record.touched = Date.now(); }
+            }
+        };
+        await Promise.all(Array.from({length:Math.min(4, batch.length)}, worker));
+    } catch (error) {
+        for (let [key, record] of batch) if (current(key, record)) { record.state = "unknown"; record.touched = Date.now(); }
+        Zotero.logError(error);
+    } finally {
+        processingInFlight.delete(libraryID);
+        refreshProcessingColumn();
+        if (processingPending.has(libraryID)) scheduleProcessingFetch();
+    }
+}
+
+function processingColumnData(item) {
+    if (!item || item.deleted || (!item.isRegularItem() && !item.isAttachment())) return "";
+    const encode = value => JSON.stringify({library_id:item.libraryID, item_key:item.key, ...value});
+    if (processingRowJobs.has(processingKey(item))) return encode({state:"processing"});
+    let attachments;
+    try {
+        attachments = item.isAttachment() ? [item] : item.getAttachments().map(id => Zotero.Items.get(id));
+    } catch (_) {
+        let key = processingKey(item);
+        if (item.loadDataType && !processingChildLoads.has(key)) {
+            processingChildLoads.add(key);
+            item.loadDataType("childItems").then(refreshProcessingColumn).catch(error => Zotero.logError(error))
+                .finally(() => processingChildLoads.delete(key));
+        }
+        return encode({state:"checking"});
+    }
+    let allAttachments = attachments.filter(attachment => attachment && !attachment.deleted && attachment.libraryID === item.libraryID);
+    attachments = allAttachments.filter(attachment =>
+        (attachment.attachmentContentType === "application/pdf" || /\.pdf$/i.test(attachment.attachmentFilename || "")));
+    if (!attachments.length) return encode({state:allAttachments.length ? "web_only" : "no_pdf"});
+    let states = attachments.map(attachment => {
+        let key = processingKey(attachment);
+        if (processingBusy.has(key)) return "processing";
+        if (processingErrors.has(key)) return "error";
+        return queueProcessingCheck(attachment).state;
+    });
+    let ready = states.filter(state => state === "processed").length;
+    let state = ready === states.length ? "processed" : states.includes("processing") ? "processing"
+        : states.includes("checking") ? "checking" : states.includes("unknown") ? "unknown"
+        : states.includes("error") ? "error" : ready ? "partial" : states.includes("unprocessed") ? "unprocessed"
+        : states.includes("outdated") ? "outdated" : states.includes("no_text") ? "no_text"
+        : states.includes("unavailable") ? "unavailable" : "unprocessed";
+    return encode({state, ready, total:states.length});
+}
+
+async function processColumnItem(value) {
+    let item = Zotero.Items.getByLibraryAndKey(value.library_id, value.item_key);
+    let win = Zotero.getMainWindow();
+    if (!item || item.deleted || item.libraryID !== value.library_id) {
+        await showZitatlotseNotice(win, ui("Dieser Eintrag ist nicht mehr verfügbar.", "This item is no longer available."));
+        return;
+    }
+    let key = processingKey(item);
+    if (processingRowJobs.has(key)) return;
+    processingRowJobs.add(key);
+    refreshProcessingColumn();
+    try {
+        if (item.isRegularItem()) await item.loadDataType?.("childItems");
+        let attachments = item.isAttachment() ? [item] : item.getAttachments().map(id => Zotero.Items.get(id));
+        let pdfs = attachments.filter(attachment => attachment && !attachment.deleted && attachment.libraryID === item.libraryID &&
+            (attachment.attachmentContentType === "application/pdf" || /\.pdf$/i.test(attachment.attachmentFilename || "")));
+        if (!pdfs.length) {
+            let hasWeb = attachments.some(attachment => attachment && !attachment.deleted &&
+                (attachment.attachmentContentType === "text/html" || attachment.isLinkedURLAttachment?.()));
+            let reason = hasWeb ? ui(
+                "Dieser Eintrag enthält nur eine Webseite oder einen Link, keinen PDF-Volltext. Die Webseite kann lediglich eine Verlags- oder DOI-Seite sein. Hänge die vollständige PDF an diesen Zotero-Eintrag an und klicke danach erneut auf das Symbol.",
+                "This item contains a web page or link, not a full-text PDF. The page may only be a publisher or DOI landing page. Attach the full PDF to this Zotero item, then click the symbol again.") : ui(
+                "An diesem Eintrag hängt keine PDF-Datei. Eine Literaturangabe allein enthält keinen durchsuchbaren Volltext. Hänge die PDF an und klicke danach erneut auf das Symbol.",
+                "This item has no PDF attachment. A bibliographic record alone contains no searchable full text. Attach the PDF, then click the symbol again.");
+            await showUnusableDocument(win, reason);
+            return;
+        }
+        if (pdfs.some(attachment => processingBusy.has(processingKey(attachment)))) return;
+        let available = 0, changed = false;
+        for (let pdf of pdfs) {
+            try {
+                let path = await pdf.getFilePathAsync();
+                if (!path) continue;
+                let info = await IOUtils.stat(path);
+                if (!info.size) continue;
+                available++;
+                let cached = processingRecords.get(processingKey(pdf));
+                if (!cached || info.size !== cached.indexedSize || Math.abs(info.lastModified - cached.indexedMtime * 1000) > 2) changed = true;
+            } catch (_) { /* A missing local attachment cannot be processed. */ }
+        }
+        if (!available) {
+            await showUnusableDocument(win, ui("Die PDF-Datei fehlt lokal oder ist leer. Lade sie in Zotero herunter oder hänge eine lesbare PDF an.",
+                "The local PDF is missing or empty. Download it in Zotero or attach a readable PDF."));
+            return;
+        }
+        if (value.state === "no_text" && !changed) {
+            await showUnusableDocument(win, ui("Die PDF enthält keinen durchsuchbaren Text. Führe bei einem Scan zuerst eine Texterkennung (OCR) durch und verarbeite die PDF danach erneut.",
+                "The PDF has no searchable text. Run OCR on a scanned PDF, then process it again."));
+            return;
+        }
+        let summary = await indexItem(item);
+        if (summary.missing || !summary.checked || (summary.indexed && !summary.chunks))
+            await showZitatlotseNotice(win, summaryText(summary));
+    } catch (error) {
+        Zotero.logError(error);
+        await showZitatlotseNotice(win, ui("Verarbeitung fehlgeschlagen: ", "Processing failed: ") + error.message);
+    } finally {
+        processingRowJobs.delete(key);
+        refreshProcessingColumn();
+    }
+}
+
+function showUnusableDocument(win, reason) {
+    return showZitatlotseNotice(win, ui("Kein verwertbares Dokument verfügbar.", "No usable document available.") + "\n\n" + reason);
+}
+
+function showZitatlotseNotice(win, message) {
+    // Native application prompts always inherit Zotero's title-bar icon.
+    // Keep add-on notices in an owned, branded dialog instead.
+    if (serviceStopping || win.closed) return Promise.resolve();
+    let doc = win.document;
+    let existing = doc.getElementById("zqs-notice-overlay");
+    if (existing) return existing.zitatlotseNoticeDone.then(() => showZitatlotseNotice(win, message));
+    let previousFocus = doc.activeElement;
+    let overlay = element(doc, "div");
+    overlay.id = "zqs-notice-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;" +
+        "padding:20px;box-sizing:border-box;background:rgba(20,25,40,.25);font:14px/1.45 system-ui,Segoe UI,sans-serif;";
+    let dialog = element(doc, "section");
+    dialog.setAttribute("role", "alertdialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "zqs-notice-title");
+    dialog.setAttribute("aria-describedby", "zqs-notice-message");
+    dialog.style.cssText = "width:620px;max-width:100%;max-height:calc(100vh - 40px);overflow:auto;" +
+        "background:#fff1f2;color:#48131a;border:2px solid #dc2626;border-radius:10px;box-shadow:0 12px 42px #7f1d1d44;";
+    let header = element(doc, "div");
+    header.style.cssText = "display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid #991b1b;background:#b91c1c;";
+    let logo = element(doc, "img");
+    logo.id = "zqs-notice-logo";
+    logo.setAttribute("src", (pluginRoot || "") + "search.svg");
+    logo.setAttribute("alt", "");
+    logo.setAttribute("aria-hidden", "true");
+    logo.style.cssText = "display:block;width:24px;height:24px;flex:none;padding:3px;border-radius:6px;background:#fff;";
+    let title = element(doc, "strong", "Zitatlotse");
+    title.id = "zqs-notice-title";
+    title.style.cssText = "font-size:15px;color:#fff;";
+    const buttonStyle = "appearance:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;" +
+        "min-width:0;min-height:0;margin:0;padding:0;border-radius:4px;font:inherit;line-height:1;cursor:pointer;";
+    let closeButton = element(doc, "button", "×");
+    closeButton.id = "zqs-notice-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", ui("Schließen", "Close"));
+    closeButton.style.cssText = buttonStyle + "margin-left:auto;width:30px;height:30px;border:0;background:transparent;color:#fff;font-size:22px;";
+    header.append(logo, title, closeButton);
+    let content = element(doc, "div");
+    content.style.cssText = "display:flex;align-items:flex-start;gap:14px;padding:18px 20px;";
+    const svgNS = "http://www.w3.org/2000/svg";
+    let warning = doc.createElementNS(svgNS, "svg");
+    warning.id = "zqs-notice-warning";
+    warning.setAttribute("viewBox", "0 0 36 36");
+    warning.setAttribute("role", "img");
+    warning.setAttribute("aria-label", ui("Warnung", "Warning"));
+    warning.setAttribute("focusable", "false");
+    warning.style.cssText = "display:block;width:36px;height:36px;flex:none;margin-top:2px;";
+    let triangle = doc.createElementNS(svgNS, "polygon");
+    triangle.setAttribute("points", "18,3 34,32 2,32");
+    triangle.setAttribute("fill", "#dc2626");
+    triangle.setAttribute("stroke", "#dc2626");
+    triangle.setAttribute("stroke-width", "2");
+    triangle.setAttribute("stroke-linejoin", "round");
+    let stroke = doc.createElementNS(svgNS, "path");
+    stroke.setAttribute("d", "M18 12v9");
+    stroke.setAttribute("stroke", "#fff");
+    stroke.setAttribute("stroke-width", "3");
+    stroke.setAttribute("stroke-linecap", "round");
+    let dot = doc.createElementNS(svgNS, "circle");
+    dot.setAttribute("cx", "18");
+    dot.setAttribute("cy", "26");
+    dot.setAttribute("r", "1.7");
+    dot.setAttribute("fill", "#fff");
+    warning.append(triangle, stroke, dot);
+    let body = element(doc, "div", String(message));
+    body.id = "zqs-notice-message";
+    body.style.cssText = "min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:60vh;overflow:auto;";
+    content.append(warning, body);
+    let footer = element(doc, "div");
+    footer.style.cssText = "display:flex;justify-content:flex-end;padding:0 20px 16px;";
+    let ok = element(doc, "button", "OK");
+    ok.id = "zqs-notice-ok";
+    ok.type = "button";
+    ok.style.cssText = buttonStyle + "width:80px;height:32px;border:1px solid #991b1b;background:#b91c1c;color:#fff;";
+    footer.append(ok);
+    dialog.append(header, content, footer);
+    overlay.append(dialog);
+    let resolve;
+    overlay.zitatlotseNoticeDone = new Promise(done => { resolve = done; });
+    let closed = false;
+    const keyTarget = win.addEventListener ? win : doc;
+    const dismiss = () => {
+        if (closed) return;
+        closed = true;
+        keyTarget.removeEventListener("keydown", onKey, true);
+        win.removeEventListener?.("unload", dismiss);
+        overlay.remove();
+        try { previousFocus?.focus?.(); } catch (_) { /* The owning window may be closing. */ }
+        resolve();
+    };
+    const onKey = event => {
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        if (event.key === "Escape" || event.key === "Enter") { event.preventDefault(); dismiss(); }
+        else if (event.key === "Tab") {
+            event.preventDefault();
+            (doc.activeElement === ok ? closeButton : ok).focus();
+        }
+    };
+    overlay.zitatlotseCloseNotice = dismiss;
+    closeButton.addEventListener("click", dismiss);
+    ok.addEventListener("click", dismiss);
+    keyTarget.addEventListener("keydown", onKey, true);
+    win.addEventListener?.("unload", dismiss, {once:true});
+    doc.documentElement.append(overlay);
+    ok.focus();
+    return overlay.zitatlotseNoticeDone;
+}
+
+function renderProcessingCell(_index, data, column, _first, doc) {
+    doc ||= Zotero.getMainWindow().document;
+    let cell = doc.createElementNS(HTML, "span");
+    cell.className = "cell " + (column.className || "");
+    if (!data) return cell;
+    let value = JSON.parse(data);
+    const styles = {
+        processed:["✓", "#15803d", ui("Verarbeitet", "Processed")],
+        unprocessed:["✕", "#dc2626", ui("Noch nicht verarbeitet", "Not processed")],
+        no_pdf:["?", "#64748b", ui("Keine PDF angehängt", "No PDF attached")],
+        web_only:["?", "#64748b", ui("Kein PDF-Anhang – nur Webseite, Link oder anderes Format", "No PDF attachment — web page, link or another format only")],
+        no_text:["?", "#64748b", ui("Kein durchsuchbarer Text – erneut verarbeiten oder OCR prüfen", "No searchable text — process again or check OCR")],
+        partial:["◐", "#a16207", ui("Teilweise verarbeitet", "Partially processed")],
+        outdated:["↻", "#a16207", ui("PDF geändert – erneut verarbeiten", "PDF changed — process again")],
+        unavailable:["?", "#64748b", ui("PDF lokal nicht verfügbar oder leer", "PDF unavailable locally or empty")],
+        error:["✕", "#dc2626", ui("Verarbeitung fehlgeschlagen – erneut versuchen", "Processing failed — retry")],
+        checking:["…", "#64748b", ui("Status wird geprüft", "Checking status")],
+        processing:["↻", "#0284c7", ui("Wird verarbeitet", "Processing")],
+        unknown:["?", "#64748b", ui("Status derzeit nicht abrufbar", "Status currently unavailable")],
+    };
+    let [symbol, color, label] = styles[value.state] || styles.unknown;
+    if (["no_pdf", "web_only", "no_text", "unavailable"].includes(value.state))
+        label = ui("Kein verwertbares Dokument verfügbar.", "No usable document available.") + "\n" + label;
+    let detail = label + (value.total ? " · " + value.ready + "/" + value.total + ui(" PDFs aktuell", " PDFs current") : "") +
+        (value.state === "processing" ? "" : ui(" · Klicken zum Verarbeiten oder für Hinweise", " · Click to process or view details"));
+    let button = doc.createElementNS(HTML, "button");
+    button.type = "button";
+    button.textContent = symbol;
+    button.title = detail;
+    button.setAttribute("aria-label", detail);
+    button.disabled = value.state === "processing";
+    button.style.cssText = "appearance:none;display:flex;align-items:center;justify-content:center;" +
+        "width:100%;height:100%;min-width:0;min-height:0;margin:0;padding:0;box-sizing:border-box;" +
+        "border:0;background:transparent;border-radius:4px;line-height:1;" +
+        "font:inherit;color:inherit;cursor:" + (button.disabled ? "wait" : "pointer") + ";";
+    button.addEventListener("click", event => {
+        event.preventDefault(); event.stopPropagation();
+        return processColumnItem(value).catch(error => Zotero.logError(error));
+    });
+    button.addEventListener("dblclick", event => { event.preventDefault(); event.stopPropagation(); });
+    cell.appendChild(button);
+    cell.title = detail;
+    cell.setAttribute("aria-label", detail);
+    cell.style.cssText = "display:flex;align-items:center;justify-content:center;height:100%;padding:0;" +
+        "font-family:system-ui,Segoe UI Symbol,sans-serif;font-size:18px;font-weight:700;color:" + color + ";";
+    return cell;
+}
+
+async function registerProcessingColumn() {
+    if (!Zotero.ItemTreeManager?.registerColumn) return;
+    let key = await Zotero.ItemTreeManager.registerColumn({
+        pluginID:PLUGIN_ID, dataKey:"processing-status", label:ui("Zitatlotse: Verarbeitet", "Zitatlotse: Processed"),
+        // Zotero 10 still consults view-type defaults for initial visibility.
+        enabledTreeIDs:["main"], defaultIn:["*"], width:"42", minWidth:32, flex:0, staticWidth:true,
+        iconPath:pluginRoot + "search.svg", showInColumnPicker:true,
+        zoteroPersist:["width", "hidden", "sortDirection"],
+        dataProvider:processingColumnData, renderCell:renderProcessingCell,
+    });
+    if (serviceStopping) { if (key) await Zotero.ItemTreeManager.unregisterColumn(key); return; }
+    registeredProcessingColumn = key;
+    refreshProcessingColumn();
+}
+
 async function indexItem(item, onProgress) {
-    let summary = { checked: 0, indexed: 0, chunks: 0, missing: 0, pdfs: 0 };
+    let summary = { checked: 0, indexed: 0, chunks: 0, missing: 0, pdfs: 0, withoutPDF: 0 };
     if (!item || item.deleted || (!item.isRegularItem() && !item.isAttachment())) return summary;
     let source = item.isAttachment() && item.parentID ? Zotero.Items.get(item.parentID) : item;
     let collectionIDs = source.getCollections();
@@ -521,7 +887,12 @@ async function indexItem(item, onProgress) {
         onProgress?.(ui("PDF „", "PDF ‘") +
             (attachment.getField("title") || attachment.attachmentFilename || attachment.key) +
             ui("“ wird in Chunks zerlegt und eingebettet …", "’ is being split into chunks and embedded…"));
-        let result = await request("/index", {
+        let key = processingKey(attachment);
+        processingBusy.add(key);
+        processingErrors.delete(key);
+        refreshProcessingColumn();
+        let result;
+        try { result = await request("/index", {
             library_id: source.libraryID,
             item_key: source.key,
             attachment_key: attachment.key,
@@ -532,16 +903,23 @@ async function indexItem(item, onProgress) {
             language: source.isRegularItem() ? source.getField("language") || "" : "",
             zotero_uri: Zotero.URI.getItemURI(source),
             pdf_path: path,
-        });
+        }); }
+        catch (error) { processingErrors.add(key); throw error; }
+        finally {
+            processingBusy.delete(key);
+            processingRecords.delete(key);
+            refreshProcessingColumn();
+        }
         summary.checked++;
         if (result.status === "indexed") summary.indexed++;
         summary.chunks += result.chunks || 0;
     }
+    if (item.isRegularItem() && !summary.pdfs) summary.withoutPDF++;
     return summary;
 }
 
 async function indexLibrary(libraryID, onProgress) {
-    let summary = { checked: 0, indexed: 0, chunks: 0, missing: 0, pdfs: 0 };
+    let summary = { checked: 0, indexed: 0, chunks: 0, missing: 0, pdfs: 0, withoutPDF: 0 };
     let items = (await Zotero.Items.getAll(libraryID)).filter(item =>
         !(item.isAttachment() && item.parentID));
     const isPDF = attachment => attachment && (attachment.attachmentContentType === "application/pdf" ||
@@ -569,6 +947,8 @@ function summaryText(summary, library = false) {
         (summary.checked - summary.indexed) + ui(" bereits aktuell", " already up to date")];
     if (summary.missing) parts.push(summary.missing +
         ui(" PDF-Dateien lokal nicht verfügbar", " PDFs unavailable locally"));
+    if (summary.withoutPDF) parts.push(summary.withoutPDF + ui(
+        " Literaturangaben ohne PDF übersprungen", " references without PDF skipped"));
     if (summary.indexed && !summary.chunks) parts.push(ui(
         "kein auslesbarer Text – eventuell OCR nötig", "no extractable text — OCR may be needed"));
     return parts.join(" · ") + ".";
@@ -996,6 +1376,16 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     collectionLabel.setAttribute("for", "zqs-collection");
     let collectionSelect = add(collectionRow, "select", undefined, inputStyle + "width:auto;min-width:220px;max-width:100%;", "zqs-collection");
     add(collectionRow, "small", ui("Einschließlich Untersammlungen", "Including subcollections"), "color:var(--zqs-muted);");
+    let languageRow = add(main, "div", undefined, rowStyle);
+    let languageLabel = add(languageRow, "label", ui("Suchsprache", "Search language"), "font-weight:700;");
+    languageLabel.setAttribute("for", "zqs-search-language");
+    let searchLanguageChoice = add(languageRow, "select", undefined,
+        inputStyle + "width:auto;min-width:220px;max-width:100%;", "zqs-search-language");
+    searchLanguageChoice.disabled = true;
+    let languageHint = add(main, "small", "", "display:block;margin:4px 0 12px;color:var(--zqs-muted);", "zqs-search-language-hint");
+    let activeSearchLanguage = "auto";
+    let availableSearchLanguages = {};
+    let languageRequest = 0;
     let serviceState = add(main, "p", ui("Lokaler Suchdienst wird geprüft …", "Checking local search service…"),
         "padding:10px;border-radius:6px;background:var(--zqs-inset);white-space:normal;");
     let serviceProgress = makeProgress(main);
@@ -1204,8 +1594,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         primaryStyle + "margin-top:12px;", "zqs-agent-save");
     let agentSettingsProgress = makeProgress(agentCard);
     add(agentCard, "p", ui(
-        "Die KI kann Fundstellen lesen, ihre Suchfrage anpassen und weitere Aspekte suchen. Standard: 3 Suchschritte, danach eine Zusammenfassung. Die Suche bleibt in der gewählten Bibliothek. Unterstützt das Modell keine Funktionsaufrufe, wird die normale KI-Suche verwendet. Zusätzliche Schritte können länger dauern und bei Cloud-Anbietern mehr kosten.",
-        "AI can read passages, refine its query and search other aspects. Default: 3 search steps, followed by a summary. Search stays in the selected library. If the model cannot use function calls, standard AI search is used. Additional steps can take longer and cost more with cloud providers."),
+        "Die KI prüft die ersten Fundstellen und sucht nur weiter, wenn ein wichtiger Beleg fehlt. Standardmäßig sind bis zu 3 Suchschritte erlaubt. Die Suche bleibt in der gewählten Bibliothek. Unterstützt das Modell keine Funktionsaufrufe, wird die normale KI-Suche verwendet. Zusätzliche Schritte können länger dauern und bei Cloud-Anbietern mehr kosten.",
+        "AI reviews the first passages and searches again only when essential evidence is missing. The default limit is 3 search steps. Search stays in the selected library. If the model cannot use function calls, standard AI search is used. Additional steps can take longer and cost more with cloud providers."),
         "line-height:1.5;color:var(--zqs-muted);");
     agentEnabled.disabled = agentSteps.disabled = saveAgentSettings.disabled = true;
     let activityCard = add(preferencesPanel, "div", undefined, cardStyle);
@@ -1269,6 +1659,56 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     let embeddingModels = [], activeEmbedding = "", embeddingTimer;
     let currentLibraryID = libraryID;
     const report = message => { status.textContent = message; };
+    const renderSearchLanguages = () => {
+        searchLanguageChoice.replaceChildren();
+        let automatic = add(searchLanguageChoice, "option", ui("Automatisch (Dokumentsprachen)", "Automatic (document languages)"));
+        automatic.value = "auto";
+        let codes = [...new Set(["en", "de", "fr", "es", "it", "pt", ...Object.keys(availableSearchLanguages),
+            ...(activeSearchLanguage === "auto" ? [] : [activeSearchLanguage])])].filter(code => code !== "und");
+        let names = new Intl.DisplayNames([uiLang()], {type:"language"});
+        for (let code of codes) {
+            let option = add(searchLanguageChoice, "option", names.of(code) || code);
+            option.value = code;
+        }
+        searchLanguageChoice.value = activeSearchLanguage;
+        let documents = Object.entries(availableSearchLanguages).map(([code, count]) =>
+            (code === "und" ? ui("Unbekannt", "Unknown") : names.of(code) || code) + " · " + count);
+        languageHint.textContent = (documents.length ? documents.join(" / ") + ". " : "") + ui(
+            "Die KI formuliert Suchanfragen in der gewählten Sprache. Bei der direkten Suche die Begriffe selbst in dieser Sprache eingeben.",
+            "AI formulates queries in the selected language. For direct search, enter the terms in that language yourself.");
+    };
+    const refreshSearchLanguages = async () => {
+        let sequence = ++languageRequest;
+        let selectedLibrary = currentLibraryID;
+        try {
+            let scope = await collectionSearchScope(selectedLibrary, libraryCollections.get(selectedLibrary) || 0);
+            let result = await request("/search-languages", {library_id:selectedLibrary,...scope});
+            if (sequence !== languageRequest || selectedLibrary !== currentLibraryID) return;
+            availableSearchLanguages = result.languages || {};
+            renderSearchLanguages();
+        } catch (error) {
+            if (sequence === languageRequest) {
+                availableSearchLanguages = {};
+                renderSearchLanguages();
+            }
+        }
+    };
+    renderSearchLanguages();
+    searchLanguageChoice.addEventListener("change", async () => {
+        let selected = searchLanguageChoice.value;
+        searchLanguageChoice.disabled = true;
+        try {
+            let saved = await request("/settings", {search_language:selected});
+            if (saved.search_language !== selected) throw new Error(ui("Suchdienst aktualisieren.", "Update the search service."));
+            activeSearchLanguage = selected;
+            report(ui("Suchsprache gespeichert. Gilt ab der nächsten Suche.", "Search language saved. Applies to the next search."));
+        } catch (error) {
+            report(ui("Suchsprache konnte nicht gespeichert werden: ", "Could not save search language: ") + error.message);
+        } finally {
+            renderSearchLanguages();
+            searchLanguageChoice.disabled = false;
+        }
+    });
     const modelPlaceholder = label => {
         modelChoices.replaceChildren();
         let option = add(modelChoices, "option", label);
@@ -1305,6 +1745,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
     };
     collectionSelect.addEventListener("change", () => {
         libraryCollections.set(currentLibraryID, Number(collectionSelect.value));
+        refreshSearchLanguages();
         for (let mode of ["chat", "direct"]) {
             let old = getSearchSession(currentLibraryID, mode);
             if (old.jobID) request(old.jobEndpoint + "/cancel", {library_id:currentLibraryID,job_id:old.jobID,
@@ -1324,6 +1765,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         currentLibraryID = library.libraryID;
         librarySelect.value = String(currentLibraryID);
         refreshCollections();
+        refreshSearchLanguages();
         renderSearchSession("chat");
         renderSearchSession("direct");
         if (changed) savedSearch.value = "";
@@ -1467,6 +1909,9 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         try {
             let saved = await get("/settings");
             activeSearchMode = saved.search_mode === "fast" ? "fast" : "thorough";
+            activeSearchLanguage = saved.search_language || "auto";
+            renderSearchLanguages();
+            searchLanguageChoice.disabled = false;
             searchModeChoice.value = activeSearchMode;
             searchModeChoice.disabled = false;
             optimizedChoice.checked = saved.latency_optimized === true;
@@ -1792,7 +2237,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         }
         catch (error) {
             Zotero.logError?.(error);
-            if (overlay.zitatlotseClosing) Zotero.alert?.(win, "Zitatlotse", ui("PDF konnte nicht geöffnet werden: ", "Could not open PDF: ") + error.message);
+            if (overlay.zitatlotseClosing) await showZitatlotseNotice(win, ui("PDF konnte nicht geöffnet werden: ", "Could not open PDF: ") + error.message);
             else report(ui("PDF konnte nicht geöffnet werden: ", "Could not open PDF: ") + error.message);
         } finally { openingQuotes.delete(key); }
     };
@@ -2225,6 +2670,10 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
                 "Keine von der KI ausgewählten Zitate. Mit „Alle Treffer anzeigen“ kannst du die übrigen Fundstellen ansehen.",
                 "No AI-selected quotes. Enable ‘Show all results’ to view the other passages."));
             else renderHits(container, view.hits);
+            if (!isChat && !view.hits.length && state.retrievalComplete !== false) add(container, "small", ui(
+                "Die Grafik zeigt ähnliche Dokumente; für Zitate muss auch eine ausreichend passende Textstelle vorliegen. Prüfe, ob die PDF verarbeitet wurde, und suche mit dem konkreten Zitat oder prägnanten Begriffen.",
+                "The chart shows similar documents; quotes also require a sufficiently matching passage. Check that the PDF is processed, then search using the actual quotation or specific terms."),
+                "display:block;line-height:1.5;color:var(--zqs-muted);");
             if (isChat && !state.reviewed && state.hits.length) add(container, "small", ui(
                 "Lokale Treffer – keine KI-Auswahl verfügbar.", "Local results – no AI selection available."), "color:var(--zqs-muted);");
             if (isChat && state.progressive && state.showAll) add(container, "small", ui(
@@ -2273,6 +2722,26 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         state.viewPage = 1;
         notifySearchSession(currentLibraryID, "chat");
     });
+    const loadNonEmptyResults = async (payload, libraryID, mode, state) => {
+        let previousScored = -1;
+        while (isCurrentSearchSession(libraryID, mode, state)) {
+            let data = await request("/search", payload);
+            if (!isCurrentSearchSession(libraryID, mode, state)) return null;
+            if (data.results?.length || !data.has_more || data.retrieval_complete !== false) return data;
+            if (!data.search_id || !Number.isInteger(data.scored_chunks) || data.scored_chunks <= previousScored)
+                throw new Error(ui("Die Suche macht keinen Fortschritt. Bitte erneut suchen.",
+                    "Search is not making progress. Please run it again."));
+            previousScored = data.scored_chunks;
+            state.status = ui("Durchsuche Bibliothek … ", "Searching library… ") + data.scored_chunks +
+                " / " + data.candidate_count + ui(" Kandidaten geprüft", " candidates checked");
+            notifySearchSession(libraryID, mode);
+            // Empty windows are progress, not result pages. Keep the spinner
+            // active until an actual quotation or a completed search is found.
+            payload = {library_id:libraryID, collection_id:state.scope.collection_id || 0,
+                search_id:data.search_id, offset:data.next_offset, limit:RESULTS_PER_PAGE};
+        }
+        return null;
+    };
     const goToResultsPage = async (mode, number) => {
         let libraryAtStart = currentLibraryID;
         let state = getSearchSession(libraryAtStart, mode);
@@ -2290,9 +2759,20 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         try {
             let offset = state.totalResults === null && state.resultPages[number - 1]
                 ? state.resultPages[number - 1].next : (number - 1) * RESULTS_PER_PAGE;
-            let data = await request("/search", {library_id:libraryAtStart,
-                collection_id:state.scope.collection_id || 0,search_id:state.page.id,offset,limit:RESULTS_PER_PAGE});
-            if (!isCurrentSearchSession(libraryAtStart, mode, state)) return;
+            let data = await loadNonEmptyResults({library_id:libraryAtStart,
+                collection_id:state.scope.collection_id || 0,search_id:state.page.id,offset,limit:RESULTS_PER_PAGE},
+                libraryAtStart, mode, state);
+            if (!data || !isCurrentSearchSession(libraryAtStart, mode, state)) return;
+            if (!data.results.length && !data.has_more && state.resultPages[number - 1]) {
+                state.resultPages[number - 1].hasMore = false;
+                state.retrievalComplete = data.retrieval_complete !== false;
+                state.scoredChunks = data.scored_chunks;
+                state.candidateCount = data.candidate_count;
+                state.viewPage = number - 1;
+                state.status = ui("Suche abgeschlossen. Keine weiteren passenden Zitate.",
+                    "Search complete. No further matching quotes.");
+                return;
+            }
             storeResultsPage(state, data, number);
             state.viewPage = number;
             state.status = ui("Seite ", "Page ") + number;
@@ -2318,6 +2798,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         state.messages.push({role:"user",content:question});
         state.draft = "";
         state.pending = true;
+        state.searchLanguage = activeSearchLanguage;
         clearDocumentOverview(state);
         state.hits = null;
         state.queries = [];
@@ -2338,7 +2819,8 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         try {
             state.scope = await collectionSearchScope(libraryAtStart, libraryCollections.get(libraryAtStart) || 0);
             if (!isCurrentSearchSession(libraryAtStart, "chat", state)) return;
-            let payload = {library_id:libraryAtStart,...state.scope,message:question,history,ui_lang:uiLang(),limit:20,mode:state.searchMode};
+            let payload = {library_id:libraryAtStart,...state.scope,message:question,history,ui_lang:uiLang(),limit:20,
+                mode:state.searchMode,search_language:state.searchLanguage};
             state.jobEndpoint = state.searchMode === "evidence" ? "/evidence" : "/chat";
             let started = await request(state.jobEndpoint + "/start", payload);
             state.jobID = started.job_id;
@@ -2414,6 +2896,7 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         if (state.pending || state.loadingMore) return;
         state.draft = query.value;
         state.pending = true;
+        state.searchLanguage = activeSearchLanguage;
         clearDocumentOverview(state);
         state.hits = null;
         state.page = null;
@@ -2425,8 +2908,10 @@ function openSearchWindow(libraryID = selectedLibraryID() || Zotero.Libraries.us
         try {
             state.scope = await collectionSearchScope(libraryAtStart, libraryCollections.get(libraryAtStart) || 0);
             if (!isCurrentSearchSession(libraryAtStart, "direct", state)) return;
-            let data = await request("/search", {library_id:libraryAtStart,...state.scope,query:question,limit:20});
-            if (!isCurrentSearchSession(libraryAtStart, "direct", state)) return;
+            let data = await loadNonEmptyResults({library_id:libraryAtStart,...state.scope,query:question,limit:20,
+                search_language:state.searchLanguage},
+                libraryAtStart, "direct", state);
+            if (!data || !isCurrentSearchSession(libraryAtStart, "direct", state)) return;
             state.hits = data.results;
             state.page = {id:data.search_id,next:data.next_offset,hasMore:data.has_more};
             storeResultsPage(state, data);
@@ -2517,10 +3002,12 @@ function renderSection({ body, item }) {
 function startup({ rootURI }) {
     pluginRoot = rootURI;
     serviceStopping = false;
+    registerProcessingColumn().catch(error => Zotero.logError(error));
     ensureLocalService().catch(error => Zotero.logError(error));
     // Recover after a full supervisor loss while Zotero remains open.
     serviceHeartbeat = setInterval(() => {
         if (!serviceStopping && runtimeState.phase !== "failed") ensureLocalService().catch(error => Zotero.logError(error));
+        refreshProcessingColumn();
     }, 30000);
     for (let win of Zotero.getMainWindows()) onMainWindowLoad({ window: win });
     registeredSection = Zotero.ItemPaneManager.registerSection({
@@ -2561,6 +3048,17 @@ function startup({ rootURI }) {
 function shutdown() {
     serviceStopping = true;
     if (serviceHeartbeat) clearInterval(serviceHeartbeat);
+    if (processingRefreshTimer) clearTimeout(processingRefreshTimer);
+    if (processingFetchTimer) clearTimeout(processingFetchTimer);
+    processingRefreshTimer = processingFetchTimer = null;
+    processingRecords.clear();
+    processingPending.clear();
+    processingBusy.clear();
+    processingErrors.clear();
+    processingChildLoads.clear();
+    processingRowJobs.clear();
+    if (registeredProcessingColumn) Zotero.ItemTreeManager.unregisterColumn(registeredProcessingColumn);
+    registeredProcessingColumn = null;
     runtimeListeners.clear();
     searchSessions.clear();
     searchSessionListeners.clear();
@@ -2671,6 +3169,7 @@ function onMainWindowLoad({ window }) {
 }
 
 function onMainWindowUnload({ window }) {
+    window.document.getElementById("zqs-notice-overlay")?.zitatlotseCloseNotice();
     window.ZitatlotseSidenavObserver?.disconnect();
     delete window.ZitatlotseSidenavObserver;
     for (let button of window.document.querySelectorAll?.(".zqs-quick-search") || []) button.remove();

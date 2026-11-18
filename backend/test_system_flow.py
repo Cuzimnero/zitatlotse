@@ -57,6 +57,17 @@ class SystemFlowTest(unittest.TestCase):
                          "creators":"Example, A.", "year":"2026", "collection_ids":[10]}
         self.post("/index", self.metadata)
 
+    def test_processing_status_endpoint_reports_only_requested_library_and_loads_no_models(self):
+        self.engine._embedder = self.engine._scorer = None
+        result = self.post("/processing/status", {"library_id":71,"attachment_keys":["PDF","MISSING"]})
+        self.assertEqual(result["library_id"],71)
+        self.assertEqual(len(result["documents"]),1)
+        self.assertEqual(result["documents"][0]["attachment_key"],"PDF")
+        self.assertGreater(result["documents"][0]["chunks"],0)
+        self.assertIsNone(self.engine._embedder)
+        self.assertIsNone(self.engine._scorer)
+        self.assertEqual(self.post("/processing/status",{"library_id":72,"attachment_keys":["PDF"]})["documents"],[])
+
     def patch(self, obj, name, value):
         p = patch.object(obj, name, value)
         p.start()
@@ -210,6 +221,17 @@ class SystemFlowTest(unittest.TestCase):
         position = self.post("/quote-position", {**hit, "pdf_path":str(moved)})["position"]
         self.assertTrue(position["rects"])
         self.assertEqual(self.request("/quote-position", {**hit,"pdf_path":str(moved),"page":999})[0], 400)
+
+    def test_http_search_languages_follow_collection_and_direct_search_uses_no_ai(self):
+        self.post("/index", self.metadata)
+        self.post("/index", {**self.metadata, "library_id":72, "language":"de"})
+        result = self.post("/search-languages", {"library_id":71, "collection_id":10, "attachment_keys":["PDF"]})
+        self.assertEqual(result["languages"], {"en":1})
+        self.assertEqual(self.post("/search-languages", {"library_id":71, "attachment_keys":[]})["languages"], {})
+        with patch.object(server, "call_llm", side_effect=AssertionError("Direct search called AI")):
+            page = self.post("/search", {"library_id":71, "query":"MAE", "search_language":"en"})
+        self.assertTrue(page["results"])
+        self.assertTrue(all(hit["library_id"] == 71 for hit in page["results"]))
 
     def test_http_chat_plan_review_and_rejection_use_real_retrieval(self):
         """Controlled AI planning and review operate on real PDF results, including rejecting all quotes."""

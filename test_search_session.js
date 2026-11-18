@@ -84,7 +84,8 @@ function setup(libraryIDs = [7, 8]) {
     const modelRequests = [], modelReplies = [], relevanceRequests = [], relevanceReplies = [];
     let holdRelevance = false;
     const chatJobs = new Map(), chatReplies = [];
-    let savedSettings = {provider:"none", model:"", has_key:false, agentic_enabled:true, agentic_max_steps:3, show_ai_activity:true, search_mode:"thorough"};
+    let savedSettings = {provider:"none", model:"", has_key:false, agentic_enabled:true, agentic_max_steps:3,
+        show_ai_activity:true, search_mode:"thorough", search_language:"auto"};
     const positionRequests = [], readerOpens = [], readerNavigation = [];
     let confirmAnswer = false;
     const embedding = {models:[{id:"intfloat/multilingual-e5-small",label:"E5 Small",de:"100 Sprachen",en:"100 languages"},
@@ -157,6 +158,7 @@ function setup(libraryIDs = [7, 8]) {
                 embedding.job = {state:"complete",model:embedding.active_model,completed:2,total:2};
                 return {responseText:JSON.stringify(embedding)};
             }
+            if (url.endsWith("/search-languages")) return {responseText:JSON.stringify({languages:{en:2,de:1}})};
             if (url.endsWith("/evidence/start")) {
                 evidenceWrites.push(JSON.parse(options.body));
                 return {responseText:'{"job_id":"test-job"}'};
@@ -232,7 +234,54 @@ function previewHTML(doc) {
 }
 
 (async () => {
+    // Branded notices use the bundled add-on logo and predictable close/focus behavior.
+    const noticeApp = setup();
+    noticeApp.context.Zotero.alert = () => { throw new Error("Native Zotero alert must not be used"); };
+    vm.runInContext('pluginRoot = "jar:file:///test-addon.xpi!/"', noticeApp.context);
+    let noticeDone = vm.runInContext('showZitatlotseNotice(Zotero.getMainWindow(), "Kein verwertbares Dokument verfügbar.\\n\\nPDF fehlt.")', noticeApp.context);
+    assert.equal(noticeApp.node("notice-logo").attributes.src, "jar:file:///test-addon.xpi!/search.svg");
+    assert.match(noticeApp.node("notice-message").textContent, /Kein verwertbares Dokument verfügbar/);
+    assert.equal(noticeApp.doc.activeElement, noticeApp.node("notice-ok"));
+    await noticeApp.doc.fire("keydown", {key:"Tab"});
+    assert.equal(noticeApp.doc.activeElement, noticeApp.node("notice-close"));
+    await noticeApp.node("notice-close").click();await noticeDone;
+    assert.equal(noticeApp.node("notice-overlay"), null);
+    noticeDone = vm.runInContext('showZitatlotseNotice(Zotero.getMainWindow(), "Hinweis")', noticeApp.context);
+    await noticeApp.doc.fire("keydown", {key:"Escape"});await noticeDone;
+    assert.equal(noticeApp.node("notice-overlay"), null);
+    noticeDone = vm.runInContext('showZitatlotseNotice(Zotero.getMainWindow(), "Erster Hinweis")', noticeApp.context);
+    const queuedNotice = vm.runInContext('showZitatlotseNotice(Zotero.getMainWindow(), "Zweiter Hinweis")', noticeApp.context);
+    await noticeApp.node("notice-ok").click();await noticeDone;await flush();
+    assert.equal(noticeApp.node("notice-message").textContent,"Zweiter Hinweis");
+    await noticeApp.doc.fire("keydown", {key:"Enter"});await queuedNotice;
+    assert.equal(noticeApp.node("notice-overlay"), null);
     // Variable-size windows must not switch to arithmetic 20-row offsets.
+    const languageApp = setup();
+    languageApp.open(7, "chat");await flush();
+    assert.equal(languageApp.node("search-language").value, "auto");
+    assert.match(languageApp.node("search-language-hint").textContent, /Englisch.*Deutsch/);
+    languageApp.node("search-language").value = "en";
+    await languageApp.node("search-language").fire("change");
+    assert.deepEqual(languageApp.settingsWrites.at(-1), {search_language:"en"});
+    languageApp.node("chat-input").value = "Warum lernt das Modell so?";
+    let languageJob = languageApp.node("chat-send").click();await flush();
+    assert.equal(languageApp.pending[0].data.search_language, "en");
+    languageApp.node("search-language").value = "de";
+    await languageApp.node("search-language").fire("change");
+    languageApp.pending.shift().resolve(response("Original English evidence", {search_language:"en"}));
+    await languageJob;await flush();
+    assert.equal(languageApp.relevanceRequests.at(-1).data.search_language, "en");
+    languageApp.open(7, "search");await flush();
+    languageApp.node("search-language").value = "en";
+    await languageApp.node("search-language").fire("change");
+    languageApp.node("search-input").value = "MAE";
+    languageJob = languageApp.node("search-send").click();await flush();
+    assert.ok(languageApp.pending[0].url.endsWith("/search"));
+    assert.equal(languageApp.pending[0].data.search_language, "en");
+    assert.equal(languageApp.pending[0].data.query, "MAE");
+    languageApp.pending.shift().resolve(response("Original MAE passage"));
+    await languageJob;
+
     const progressiveApp = setup();
     progressiveApp.open(7, "search");
     progressiveApp.node("search-input").value = "Average";
@@ -247,14 +296,13 @@ function previewHTML(doc) {
     assert.equal(progressiveApp.pending[0].data.offset, 1);
     progressiveApp.pending.shift().resolve(response("", {results:[], progressive:true,
         retrieval_complete:false, scored_chunks:80, candidate_count:120, total_results:null, next_offset:1}));
-    await partialJob;
-    partialJob = progressiveApp.node("direct-next").click();
     await flush();
+    assert.equal(progressiveApp.node("search-send").disabled, true);
     assert.equal(progressiveApp.pending[0].data.offset, 1);
     progressiveApp.pending.shift().resolve(response("Last window", {progressive:true,
         retrieval_complete:true, scored_chunks:120, candidate_count:120, total_results:2, next_offset:2, has_more:false}));
     await partialJob;
-    assert.equal(progressiveApp.node("direct-page-3").attributes["aria-current"], "page");
+    assert.equal(progressiveApp.node("direct-page-2").attributes["aria-current"], "page");
     assert.match(progressiveApp.node("search-results").textContent, /Last window/);
     assert.equal(progressiveApp.node("direct-next").disabled, true);
     await progressiveApp.node("direct-page-1").click();
@@ -265,6 +313,46 @@ function previewHTML(doc) {
     progressiveApp.node("latency-optimized").checked = true;
     await progressiveApp.node("latency-optimized").fire("change");
     assert.deepEqual(progressiveApp.settingsWrites.at(-1), {latency_optimized:true});
+    const emptyApp = setup();
+    emptyApp.open(7, "search");
+    emptyApp.node("search-input").value = "Find a matching passage";
+    let emptyJob = emptyApp.node("search-send").click();
+    await flush();
+    emptyApp.pending.shift().resolve(response("", {results:[],progressive:true, retrieval_complete:false,
+        scored_chunks:40,candidate_count:120,total_results:null,next_offset:0}));
+    await flush();
+    assert.equal(emptyApp.node("search-send").disabled, true);
+    assert.equal(emptyApp.pending[0].data.offset, 0);
+    assert.equal(emptyApp.pending[0].data.library_id, 7);
+    assert.equal(emptyApp.pending[0].data.search_id, "search-1");
+    emptyApp.pending.shift().resolve(response("Recovered quotation", {progressive:true,retrieval_complete:false,
+        scored_chunks:80,candidate_count:120,total_results:null,next_offset:1}));
+    await emptyJob;
+    assert.match(emptyApp.node("search-results").textContent, /Recovered quotation/);
+    assert.equal(emptyApp.node("direct-page-1").attributes["aria-current"], "page");
+    // A final empty window ends pagination on the last real page.
+    emptyJob = emptyApp.node("direct-next").click();
+    await flush();
+    emptyApp.pending.shift().resolve(response("", {results:[],progressive:true,retrieval_complete:true,
+        scored_chunks:120,candidate_count:120,total_results:1,next_offset:1,has_more:false}));
+    await emptyJob;
+    assert.match(emptyApp.node("search-results").textContent, /Recovered quotation/);
+    assert.equal(emptyApp.node("direct-page-2"), null);
+    assert.equal(emptyApp.node("search-send").disabled, false);
+    // Reset while a continuation is pending must not restart or restore it.
+    emptyApp.node("search-input").value = "Another search";
+    emptyJob = emptyApp.node("search-send").click();
+    await flush();
+    emptyApp.pending.shift().resolve(response("", {results:[],progressive:true,retrieval_complete:false,
+        scored_chunks:40,candidate_count:120,total_results:null,next_offset:0}));
+    await flush();
+    const cancelledWindow = emptyApp.pending.shift();
+    await emptyApp.node("search-reset").click();
+    cancelledWindow.resolve(response("", {results:[],progressive:true,retrieval_complete:false,
+        scored_chunks:80,candidate_count:120,total_results:null,next_offset:0}));
+    await emptyJob;
+    assert.equal(emptyApp.pending.length, 0);
+    assert.doesNotMatch(emptyApp.node("search-results").textContent, /Recovered quotation/);
     const partialChat = setup();
     partialChat.open();
     partialChat.node("chat-input").value = "Which experiments support this?";

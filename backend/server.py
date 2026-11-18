@@ -31,7 +31,7 @@ from agent_search import agentic_search, result_store, citation_refs
 from embedding_models import EmbeddingManager
 from evidence_search import evidence_search, EvidenceJobs
 from search_activity import SearchJobs, SearchCancelled
-from search_scope import scope_fields, scoped_languages, check_hit_scope
+from search_scope import scope_fields, scoped_languages, check_hit_scope, selected_search_language, query_languages
 from document_relevance import document_relevance
 from provider_models import discover_models
 from search_budget import call_budget, take_call
@@ -176,6 +176,7 @@ def review_chat_results(question: str, results: list[dict], settings: dict,
 
 def chat_search(data: dict, progress=lambda **_: None) -> dict:
     settings = get_settings()
+    settings = {**settings, "search_language": selected_search_language(data, settings)}
     if not settings.get("latency_optimized") or data.get("mode") == "evidence":
         return _chat_search(data, progress, settings)
     started = time.monotonic()
@@ -211,7 +212,9 @@ def _chat_search(data: dict, progress, settings: dict) -> dict:
     plan_reply = ""
     warning = ""
     optimized = settings.get("latency_optimized", False)
-    targets = sorted(code for code in languages if code != "und")
+    selection = settings.get("search_language", "auto")
+    target_languages = query_languages(languages, selection)
+    targets = sorted(target_languages)
     history = [{"role": entry.get("role"), "content": str(entry.get("content", ""))[:1000]}
                for entry in data.get("history", [])[-6:]
                if isinstance(entry, dict) and entry.get("role") in {"user", "assistant"}]
@@ -225,17 +228,20 @@ def _chat_search(data: dict, progress, settings: dict) -> dict:
             warning = ("Mehrstufige Suche nicht verfügbar; normale KI-Suche verwendet: " + str(exc)
                        if ui_lang == "de" else
                        "Multi-step search unavailable; using standard AI search: " + str(exc))
-    if settings["provider"] != "none" and targets and not keyword:
+    if settings["provider"] != "none" and targets and (not keyword or selection != "auto"):
         prompt = (
             "You formulate semantic search queries for a Zotero library. Do not invent evidence or answer the research question. "
             "Read the current user request and short conversation history. "
-            "Write one concise, information-rich search query IN EACH target document language. "
+            "Write exactly one concise, information-rich search query IN EACH target document language. "
+            "Capture the main question in that query, including both conditions for comparisons. "
+            "Do not generate alternatives, synonym lists, or separate subqueries. "
             "For example, a German request about Beweise für Overfitting needs an English query such as "
             "'empirical evidence of overfitting in machine learning models' for English documents. "
             "Return only JSON with fields queries (object mapping ISO language codes to strings) and reply "
             "(a brief explanation in the user's language of how you will search). "
             "Never claim that evidence was found.\n"
-            + "Target document languages and PDF counts: " + json.dumps(languages, ensure_ascii=False) + "\n"
+            + "Use only the target query languages, even if the question or interface uses another language.\n"
+            + "Target query languages and PDF counts: " + json.dumps(target_languages, ensure_ascii=False) + "\n"
             + "User interface language: " + ui_lang + "\n"
             + "Conversation history: " + json.dumps(history, ensure_ascii=False) + "\n"
             + "Current request: " + question
@@ -250,23 +256,37 @@ def _chat_search(data: dict, progress, settings: dict) -> dict:
             if not isinstance(candidates, dict):
                 raise ValueError("Ungültige KI-Antwort")
             for code in targets:
-                translated = str(candidates.get(code, "")).strip()[:500]
-                if translated:
-                    queries[code] = translated
-            used_ai = bool(len(queries) > 1)
+                translated = candidates.get(code)
+                if isinstance(translated, str) and translated.strip():
+                    queries[code] = translated.strip()[:500]
+            used_ai = any(code in queries for code in targets)
             if used_ai:
                 plan_reply = str(plan.get("reply", "")).strip()[:500]
+                if selection != "auto":
+                    if selection not in queries:
+                        raise ValueError("Suchformulierung in der gewählten Sprache fehlt")
+                    queries = {selection: queries[selection], "default": queries[selection]}
+                elif "und" not in languages and all(code in queries for code in targets):
+                    queries.pop("default", None)
+            elif selection != "auto":
+                raise ValueError("Suchformulierung in der gewählten Sprache fehlt")
         except SearchCancelled:
             raise
         except Exception as exc:
+            if selection != "auto":
+                raise ValueError(("Die Suchfrage konnte nicht in die gewählte Sprache übertragen werden: "
+                                  if ui_lang == "de" else "Could not formulate the query in the selected language: ") + str(exc)) from None
             progress(event={"type":"fallback"})
             warning += ("\n" if warning else "") + ("KI-Abfrage fehlgeschlagen; mehrsprachige lokale Suche verwendet: " + str(exc)
                        if ui_lang == "de" else
                        "AI query planning failed; using local multilingual search: " + str(exc))
-    progress(phase="searching", event={"type":"search_started", "query":question})
+    retrieval_query = queries.get("default") or next(iter(queries.values()), question)
+    progress(phase="searching")
     for code, planned_query in queries.items():
-        if code != "default": progress(event={"type":"search_started", "query":planned_query, "language":code})
-    page = engine.search_page({"library_id": library_id, **scope, "query": question,
+        if code == "default" and planned_query in [text for lang, text in queries.items() if lang != "default"]:
+            continue
+        progress(event={"type":"search_started", "query":planned_query, "language":code})
+    page = engine.search_page({"library_id": library_id, **scope, "query": retrieval_query,
                                "search_mode": settings.get("search_mode", "thorough"),
                                "queries": queries, "limit": data.get("limit", 20),
                                "progressive": optimized,
@@ -324,7 +344,7 @@ def _chat_search(data: dict, progress, settings: dict) -> dict:
             progress(event={"type":"fallback"})
             # Broader AI candidates may only be shown after a valid review.
             # If the provider fails, fall back to the stricter local retrieval.
-            page = engine.search_page({"library_id":library_id, **scope, "query":question,
+            page = engine.search_page({"library_id":library_id, **scope, "query":retrieval_query,
                                        "progressive":optimized,
                                        "search_mode":settings.get("search_mode", "thorough"),
                                        "queries":queries, "limit":data.get("limit",20), "retrieval_mode":"direct"})
@@ -362,6 +382,7 @@ def _chat_search(data: dict, progress, settings: dict) -> dict:
     return {"reply": reply, "queries": queries, "results": results, "used_ai": used_ai,
             "total_results": page.get("total_results") if page["search_id"] else len(results),
             "ai_configured": settings["provider"] != "none", "reviewed": reviewed,
+            "search_language": selection,
             "languages": languages, "warning": warning,
             "search_id": page["search_id"], "next_offset": page["next_offset"],
             "has_more": page["has_more"], "total_chunks": page["total_chunks"],
@@ -386,7 +407,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             self._send(200, {"ok": True, "service": "zitatlotse", "llm": get_settings()["provider"],
-                             "version": "0.30.0",
+                             "version": "0.32.0",
                              "models_cached": MODELS_CACHED})
         elif parsed.path == "/settings":
             self._send(200, get_settings())
@@ -413,6 +434,10 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if self.path == "/index":
                 result = engine.index_pdf(data)
+            elif self.path == "/processing/status":
+                result = engine.processing_status(data)
+            elif self.path == "/search-languages":
+                result = {"languages": scoped_languages(engine, int(data["library_id"]), scope_fields(data))}
             elif self.path == "/search":
                 result = (result_store.page(data) if str(data.get("search_id", "")).startswith("agent-")
                           else engine.search_page({**data, **({"search_mode":get_settings()["search_mode"],

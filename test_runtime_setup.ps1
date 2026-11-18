@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Xpi,
     [Parameter(Mandatory=$true)][string]$TestRoot,
-    [int]$Port = 18765
+    [int]$Port = 18765,
+    [switch]$KeepRuntime
 )
 # Run only in a disposable directory, never against a user's installed backend.
 $ErrorActionPreference = 'Stop'
@@ -28,6 +29,7 @@ try {
     [IO.Compression.ZipFileExtensions]::ExtractToFile($testArchive.GetEntry('runtime/setup.ps1'), $script, $true)
 } finally { $testArchive.Dispose() }
 $report = @{version=$expectedVersion; external_python=$false; model_downloads=$false; cloud_calls=0}
+$testSucceeded = $false
 function Check-Health {
     $health = Invoke-RestMethod "http://127.0.0.1:$Port/health" -TimeoutSec 5
     if (-not $health.ok -or $health.version -ne $expectedVersion) { throw 'Unexpected service health.' }
@@ -41,6 +43,7 @@ function Stop-TestService {
         $ownedProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if ($ownedProcess -and $ownedProcess.Path -and $ownedProcess.Path.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
             Stop-Process -Id $processId -ErrorAction SilentlyContinue
+            if (-not $ownedProcess.WaitForExit(5000)) { throw 'Test process did not exit; runtime retained.' }
         }
     }
 }
@@ -75,11 +78,30 @@ try {
     $report.database_preserved = 'passed'
     $report.progress = 'passed'
     $report.windows_reboot = 'simulated by process loss; no OS reboot performed'
+    $report.extracted_runtime_retained = [bool]$KeepRuntime
     $report | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $root 'report.json') -Encoding UTF8
     $report | ConvertTo-Json -Depth 5
+    $testSucceeded = $true
 } finally {
     Stop-TestService
     $env:PATH = $savedPath
     $env:HF_HUB_OFFLINE = $savedOffline
     $env:PSModulePath = $savedModulePath
+    if ($testSucceeded -and -not $KeepRuntime) {
+        # These are disposable copies extracted by this test. Keep reports,
+        # backend diagnostics and the preservation-test database for review.
+        foreach ($directoryName in @('runtime', 'staging')) {
+            $target = [IO.Path]::GetFullPath((Join-Path $root $directoryName))
+            if (-not $target.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Test cleanup escaped its disposable directory.'
+            }
+            if (Test-Path -LiteralPath $target) {
+                $targetItem = Get-Item -LiteralPath $target -Force
+                if ($targetItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw 'Test cleanup refuses directory links.'
+                }
+                Remove-Item -LiteralPath $target -Recurse -Force
+            }
+        }
+    }
 }

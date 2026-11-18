@@ -9,7 +9,7 @@ import re
 import numpy as np
 
 from embedding_models import model_compatibility
-from search_scope import scope_fields
+from search_scope import scope_fields, selected_search_language
 
 
 TIERS = ("lowest", "low", "medium", "high", "highest", "same", "unindexed")
@@ -111,8 +111,11 @@ def document_relevance(engine, data):
                 for lang, text in language_queries.items())):
         raise ValueError("Ungültige sprachbezogene Suchformulierungen")
     language_queries = {lang.replace("_", "-").lower().split("-")[0]: text.strip() for lang,text in language_queries.items()}
+    selection = selected_search_language(data, {})
     fallback_queries = list(dict.fromkeys([query] + [text.strip() for text in additional if text.strip()]))
-    queries = list(dict.fromkeys(fallback_queries + list(language_queries.values())))
+    if selection != "auto":
+        fallback_queries = [language_queries.get(selection, query)]
+        language_queries = {}
     with engine.lock, engine._connect() as db:
         rows = db.execute("SELECT attachment_key,item_key,title,language,content_fingerprint FROM documents WHERE library_id=?",
                           (library_id,)).fetchall()
@@ -126,10 +129,18 @@ def document_relevance(engine, data):
                                   "page": None, "matched_query": "", "language": "", "content_fingerprint": ""}
         model = engine.model_name
         compatibility = model_compatibility(model, engine.embedding_config)
+        document_queries = {}
+        for key, doc in documents.items():
+            language = (doc["language"] or "").replace("_", "-").lower().split("-")[0]
+            translated = language_queries.get(language)
+            document_queries[key] = [translated] if translated else fallback_queries
+        queries = list(dict.fromkeys(text for key, variants in document_queries.items()
+                                     if documents[key]["item_key"] for text in variants))
         context = {"model": model, "query": query, "model_compatibility": compatibility,
                    "aggregation": "maximum_chunk_cosine", "classification": "relative_equal_width",
                    "queries": queries, "language_queries": language_queries,
-                   "query_language_policy": "document_language_with_original_fallback",
+                   "query_language_policy": "document_language_with_original_fallback" if selection == "auto" else "selected_language",
+                   "search_language": selection,
                    "collection_id": scope.get("collection_id", 0)}
         if not documents or not any(doc["item_key"] for doc in documents.values()):
             return {**summarize_documents(list(documents.values())), **context}
@@ -139,12 +150,8 @@ def document_relevance(engine, data):
             return {**summarize_documents(list(documents.values())), **context}
         cached = engine.retrieval_cache.query_vectors(engine, queries)
         query_vectors = np.stack([cached[text] for text in queries])
-        fallback_indices = [queries.index(text) for text in fallback_queries]
-        document_query_indices = {}
-        for key, doc in documents.items():
-            language = (doc["language"] or "").replace("_", "-").lower().split("-")[0]
-            translated = language_queries.get(language)
-            document_query_indices[key] = [queries.index(translated)] if translated else fallback_indices
+        document_query_indices = {key: [queries.index(text) for text in variants]
+                                  for key, variants in document_queries.items() if documents[key]["item_key"]}
         # No flag filter, cosine cutoff, BERTScore or result-page limit here.
         # The overview must include every indexed PDF in the selected scope.
         for rows, matrix in engine.retrieval_cache.batches(engine, db, library_id, set(documents)):

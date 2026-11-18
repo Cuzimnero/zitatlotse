@@ -58,6 +58,27 @@ class DocumentRelevanceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             document_relevance(self.engine, {"library_id":1,"collection_id":10,"query":"Question"})
 
+    def test_overview_only_embeds_used_language_queries(self):
+        self.insert(1, "EN", [[1,0]])
+        with self.engine._connect() as db:
+            db.execute("UPDATE documents SET language='en'")
+        with patch("retrieval_cache.encode_texts", return_value=np.array([[1.,0.]])) as encode:
+            result = document_relevance(self.engine, {"library_id":1, "attachment_keys":["EN", "MISSING"], "query":"Deutsche Originalfrage",
+                "language_queries":{"en":"English query"}})
+        self.assertEqual(encode.call_args.args[2], ["English query"])
+        self.assertEqual(result["queries"], ["English query"])
+
+    def test_overview_manual_query_language_applies_across_document_languages(self):
+        for key, language in [("EN", "en"), ("DE", "de")]:
+            self.insert(1, key, [[1,0]])
+            with self.engine._connect() as db:
+                db.execute("UPDATE documents SET language=? WHERE attachment_key=?", (language,key))
+        with patch("retrieval_cache.encode_texts", return_value=np.array([[1.,0.]])) as encode:
+            result = document_relevance(self.engine, {"library_id":1, "query":"Deutsche Originalfrage",
+                "search_language":"en", "language_queries":{"en":"English query", "de":"Andere Frage"}})
+        self.assertEqual(encode.call_args.args[2], ["English query"])
+        self.assertEqual({doc["matched_query"] for doc in result["documents"]}, {"English query"})
+
     def test_relative_bands_and_uniform_scores_keep_ties_together(self):
         values = [.1, .11, .3, .5, .7, .9, .9]
         docs = [{"attachment_key":str(i), "similarity":v} for i,v in enumerate(values)]
@@ -80,14 +101,16 @@ class DocumentRelevanceTest(unittest.TestCase):
             self.insert(1,key,[vector])
             with self.engine._connect() as db:
                 db.execute("UPDATE documents SET language=? WHERE attachment_key=?",(language,key))
-        with patch("retrieval_cache.encode_texts",return_value=np.array([[0.,1.],[1.,0.],[-1.,0.]])) as encoder:
+        vectors = {"Original question":[0.,1.], "English query":[1.,0.], "Deutsche Anfrage":[-1.,0.]}
+        with patch("retrieval_cache.encode_texts", side_effect=lambda model, name, texts, *args:
+                   np.array([vectors[text] for text in texts])) as encoder:
             result=document_relevance(self.engine,{"library_id":1,"query":"Original question",
                 "language_queries":{"en-US":"English query","de":"Deutsche Anfrage"}})
         scores={d["attachment_key"]:(d["similarity"],d["matched_query"]) for d in result["documents"]}
         self.assertEqual(scores["EN"],(1.,"English query"))
         self.assertEqual(scores["DE"],(-1.,"Deutsche Anfrage"),"The English query cannot inflate the German document's score")
         self.assertEqual(scores["UNKNOWN"],(1.,"Original question"))
-        self.assertEqual(encoder.call_args.args[2],["Original question","English query","Deutsche Anfrage"])
+        self.assertEqual(set(encoder.call_args.args[2]), {"Original question","English query","Deutsche Anfrage"})
         self.assertEqual(result["language_queries"],{"en":"English query","de":"Deutsche Anfrage"})
 
     def test_invalid_language_queries_rejected_before_embedding(self):
@@ -98,7 +121,7 @@ class DocumentRelevanceTest(unittest.TestCase):
     def test_encoder_must_return_one_vector_per_query_variant(self):
         self.insert(1,"EN",[[1,0]])
         with self.assertRaisesRegex(ValueError,"Suchvektoren"):
-            document_relevance(self.engine,{"library_id":1,"query":"Question","language_queries":{"en":"English query"}})
+            document_relevance(self.engine,{"library_id":1,"query":"Question","search_queries":["Another query"]})
 
     def test_incompatible_active_model_does_not_display_false_relevance(self):
         self.insert(1, "DUMMY", [[1,0]])

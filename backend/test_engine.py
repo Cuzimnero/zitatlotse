@@ -1,9 +1,11 @@
 import json
 import random
+import re
 import sqlite3
 import struct
 import threading
 from contextlib import closing
+from difflib import SequenceMatcher
 import sys
 import tempfile
 import types
@@ -13,7 +15,7 @@ from unittest.mock import patch
 
 import pymupdf as real_pymupdf
 
-from engine import Engine, chunks, detect_language, normalize_language, quote_position
+from engine import Engine, chunks, detect_language, normalize_language, quote_position, quote_fingerprint, same_quote
 
 
 class FakeVector:
@@ -238,7 +240,7 @@ class EngineTest(unittest.TestCase):
             engine = Engine(root / "index.sqlite", Embedder(), FakeScorer())
             for key, vector in (("EN", (.8,.1,.591608)), ("ORIGINAL", (.1,.96,.261534))):
                 engine.index_pdf({"library_id":1, "item_key":key, "attachment_key":key,
-                                  "pdf_path":str(pdf), "title":key, "language":"en"})
+                                  "pdf_path":str(pdf), "title":key, "language":"en" if key == "EN" else "de"})
                 with engine._connect() as db:
                     db.execute("UPDATE chunks SET embedding_blob=? WHERE attachment_key=?",
                                (struct.pack("<fff", *vector), key))
@@ -449,6 +451,53 @@ class EngineTest(unittest.TestCase):
                            "queries": {"en": "overfitting evidence", "de": "Belege für Überanpassung"}})
             self.assertIn("overfitting evidence", scorer.references_seen)
             self.assertIn("Belege für Überanpassung", scorer.references_seen)
+
+    def test_quote_prefilter_preserves_legacy_duplicate_decisions(self):
+        def legacy(a, b):
+            a = re.sub(r"\W+", " ", a.casefold()).strip()
+            b = re.sub(r"\W+", " ", b.casefold()).strip()
+            return (a == b or (min(len(a), len(b)) >= 20 and (a in b or b in a))
+                    or SequenceMatcher(None, a, b).ratio() >= 0.88)
+
+        texts = ["", "!!!", "   ", "Äpfel und STRAẞE", "äpfel und straße.",
+                 "Repeated source passage with enough context",
+                 "Repeated source passage with enough context " + "additional context " * 20,
+                 "classification generalization regularization normalization",
+                 "classifications generalizations regularizations normalizations",
+                 "a " * 140, "b " * 140]
+        pairs = [(a, b) for a in texts for b in texts]
+        rng = random.Random(417)
+        for _ in range(150):
+            original = "".join(rng.choices("abcdefghijklmnop äöüßé你好", k=rng.randrange(10, 200)))
+            changed = list(original)
+            for index in rng.sample(range(len(changed)), min(20, len(changed))):
+                changed[index] = rng.choice("abcxyz ")
+            pairs.extend([(original, "".join(changed)), (original, original.upper()),
+                          (original, original[::2]), (original, original[::-1])])
+        for a, b in pairs:
+            with self.subTest(a=a, b=b):
+                self.assertEqual(same_quote(a, b), legacy(a, b))
+
+    def test_quote_prefilter_skips_impossible_exact_comparisons(self):
+        with patch("engine.SequenceMatcher.ratio", side_effect=AssertionError("Unnecessary exact comparison")):
+            self.assertFalse(same_quote("a" * 80, "b" * 80))
+            self.assertFalse(same_quote("small source", "completely different large passage " * 30))
+            self.assertTrue(same_quote("!!!", "..."))
+            contained = "An original passage with sufficient length"
+            self.assertTrue(same_quote(contained, contained + " additional source context" * 50))
+
+    def test_quote_normalization_cache_reuses_text_and_stays_bounded(self):
+        quote_fingerprint.cache_clear()
+        self.addCleanup(quote_fingerprint.cache_clear)
+        original = " Die KI\n lernt! "
+        self.assertEqual(quote_fingerprint(original), "die ki lernt")
+        self.assertEqual(quote_fingerprint(original), "die ki lernt")
+        self.assertEqual(quote_fingerprint.cache_info().hits, 1)
+        maximum = quote_fingerprint.cache_info().maxsize
+        for number in range(maximum + 1):
+            quote_fingerprint(f"Separate source passage {number}")
+        self.assertEqual(quote_fingerprint.cache_info().currsize, maximum)
+        self.assertEqual(quote_fingerprint(original), "die ki lernt")
 
     def test_search_deduplicates_repeated_quotes_in_one_pdf(self):
         repeated = "Der Klimawandel beeinflusst die Landwirtschaft erheblich. " * 40

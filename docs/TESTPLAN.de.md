@@ -77,6 +77,9 @@ Die technischen Namen stehen zusätzlich hier, damit jeder Eintrag des Ergebnisb
 | `test_language_metadata_and_text_fallback` | Sprachmetadaten werden normalisiert; fehlt die Sprache, greift die Texterkennung. |
 | `test_search_uses_document_language_query` | Dokumente werden mit der für ihre Sprache bestimmten Suchvariante verglichen. |
 | `test_search_deduplicates_repeated_quotes_in_one_pdf` | Wiederholte identische Zitate derselben PDF erzeugen keine mehrfachen Fundstellen. |
+| `test_quote_prefilter_preserves_legacy_duplicate_decisions` | Der schnelle Vorfilter trifft für leere, enthaltene, mehrsprachige und veränderte Texte dieselben Duplikatentscheidungen wie der bisherige Vergleich. |
+| `test_quote_prefilter_skips_impossible_exact_comparisons` | Eindeutig unähnliche Satzpaare benötigen keinen ausführlichen Vergleich. Enthaltene Passagen und leere Vergleichsfassungen bleiben korrekt. |
+| `test_quote_normalization_cache_reuses_text_and_stays_bounded` | Wiederholte Vergleiche verwenden dieselbe vereinheitlichte Fassung. Der Zwischenspeicher hält höchstens 2.048 Einträge. |
 | `test_topic_flags_are_saved_but_do_not_exclude_documents` | Themenflags und Themenvektoren werden gespeichert, ohne relevante Dokumente allein deshalb auszuschließen. |
 | `test_quote_selection_matches_inflected_pdf_word` | Die Zitatwahl erkennt auch passende gebeugte Wortformen im PDF. |
 | `test_quote_selection_prefers_distinctive_search_term` | Die Zitatwahl bevorzugt den aussagekräftigen Suchbegriff gegenüber generischen Textstellen. |
@@ -147,6 +150,20 @@ Die technischen Namen stehen zusätzlich hier, damit jeder Eintrag des Ergebnisb
 | `test_cloud_discovery_errors_and_empty_results_leave_labelled_suggestions` | Fehlgeschlagene oder leere Modellabfragen zeigen weiterhin ausdrücklich als Vorschläge markierte Einträge. |
 | `test_ollama_retries_transient_server_error` | Ein vorübergehender Ollama-Serverfehler löst den begrenzten Wiederholungsversuch aus. |
 
+### Suchsprache
+
+| Methode | Was wird geprüft? |
+|---|---|
+| `test_search_language_persists_normalizes_and_validates` | Automatik ist voreingestellt, Sprachwahl bleibt gespeichert und ungültige Werte werden abgewiesen. |
+| `test_translated_query_is_the_only_vector_and_bert_query_for_english_scope` | Bei englischen Dokumenten gelangt ausschließlich die englische Suchformulierung in Embeddings und BERTScore. |
+| `test_manual_language_overrides_settings_and_excludes_other_plans` | Die gewählte Sprache gilt für die gesamte Suchanfrage und entfernt anderssprachige Planvarianten. |
+| `test_manual_language_missing_translation_never_searches_original` | Fehlt eine Suchformulierung in der gewählten Sprache, wird kein Suchlauf mit der anderssprachigen Originalfrage gestartet. |
+| `test_agent_rejects_other_query_languages_before_search` | Tool-Aufrufe in einer anderen als der gewählten Suchsprache führen keinen Suchlauf aus. |
+| `test_evidence_manual_language_ignores_other_language_queries` | Die Belegsuche führt nur Suchformulierungen in der gewählten Sprache aus. |
+| `test_overview_only_embeds_used_language_queries` | Die Dokumentübersicht berechnet keine ungenutzte Originalfrage zusätzlich zur Übersetzung. |
+| `test_overview_manual_query_language_applies_across_document_languages` | Eine manuell gewählte Suchsprache gilt auch bei gemischten Dokumentsprachen. |
+| `test_http_search_languages_follow_collection_and_direct_search_uses_no_ai` | Sprachmetadaten respektieren Bibliothek und Sammlung. Die direkte Suche ruft keine KI auf. |
+
 ### Agentische Suche
 
 | Methode | Was wird geprüft? |
@@ -155,6 +172,8 @@ Die technischen Namen stehen zusätzlich hier, damit jeder Eintrag des Ergebnisb
 | `test_numeric_source_after_eighth_hit_is_exposed_and_can_be_selected` | Eine numerische Belegstelle hinter dem achten Treffer bleibt für die KI sichtbar und auswählbar. |
 | `test_results_drive_next_query_and_refs_survive_merge_and_pagination` | Tool-Ergebnisse gelangen in die nächste Modellrunde; Referenzen bleiben nach Zusammenführen und Blättern stabil. |
 | `test_limit_and_duplicate_queries_do_not_run_extra_searches` | Das Schrittlimit und bereits ausgeführte Suchanfragen verhindern zusätzliche identische Suchläufe. |
+| `test_parallel_queries_wait_for_first_results` | Bei mehreren Tool-Aufrufen in derselben Runde wird nur die erste Suche ausgeführt. |
+| `test_followup_can_finish_without_a_new_search` | Nach einer erfolglosen ersten Suche kann die KI ohne weiteren Suchlauf abschließen. |
 | `test_model_cannot_switch_library_or_execute_arbitrary_functions` | Modellaufrufe dürfen weder die Bibliothek wechseln noch beliebige Funktionen ausführen. |
 | `test_unknown_references_are_rejected_and_no_evidence_returns_no_quotes` | Erfundenen Quellenreferenzen wird nicht vertraut; ohne Belege werden keine Zitate ausgegeben. |
 | `test_unsupported_model_produces_no_fabricated_search` | Fehlende Tool-Unterstützung wird als Fehler gemeldet statt Suchaktionen vorzutäuschen. |
@@ -173,7 +192,7 @@ Die technischen Namen stehen zusätzlich hier, damit jeder Eintrag des Ergebnisb
 | `test_foreign_library_hits_rejected` | Belegstellen aus einer fremden Bibliothek werden verworfen. |
 | `test_agent_collects_all_pages_even_when_finish_selects_no_quotes` | Die Belegprüfung lädt sämtliche Agenten-Fundstellen auch dann, wenn der erste Abschluss keine Zitate auswählt. |
 | `test_jobs_are_library_scoped_and_can_cancel_before_next_batch` | Hintergrundjobs sind bibliotheksgebunden und können vor dem nächsten Bewertungsschritt abgebrochen werden. |
-| `test_separate_aspect_queries_collect_all_pages_before_next_search` | Für getrennte Aspektfragen werden jeweils alle Ergebnisseiten vor dem nächsten Suchlauf eingesammelt. |
+| `test_separate_aspect_queries_collect_all_pages_before_next_search` | Für bis zu zwei Aspektfragen pro Sprache werden alle Seiten vor dem nächsten Suchlauf geladen. Weitere Varianten entfallen. |
 
 ### Ablaufanzeige, Abbruch und Suchmodi
 
@@ -293,8 +312,13 @@ Echte Modelle nur aus einem vorhandenen Cache laden oder einen Download separat 
 
 | Test | Prüfung |
 | --- | --- |
+| `test_processing_status_uses_actual_chunks_and_is_library_scoped` | Die Statusspalte zählt tatsächliche Chunks statt bloßer Dokumenteinträge, trennt Bibliotheken und prüft ungültige Sammelabfragen ohne Modellaufruf. |
+| `test_processing_status_does_not_wait_for_the_search_model_lock` | Statusabfragen bleiben auch während einer durch die Modellsperre blockierten Suche verfügbar. |
+| `test_processing_status_endpoint_reports_only_requested_library_and_loads_no_models` | Der echte lokale HTTP-Endpunkt liefert nur angeforderte PDF-Schlüssel der gewählten Bibliothek und lädt dabei keine Modelle. |
 | `test_progressive_first_window_is_bounded_and_all_locations_remain_reachable` | Prüft höchstens 40 BERT-Kandidaten vor der ersten Seite, anschließend alle 120 Fundorte ohne Duplikate; bereits angezeigte Seiten und Bibliotheksgrenzen bleiben stabil. |
 | `test_empty_progressive_window_can_continue_without_inventing_results` | Auch ohne Treffer im ersten Fenster kann die Suche weiterlaufen; der Cursor geht voran, ohne Scheinzitate zu erzeugen. |
+| `test_direct_literal_hits_are_not_hidden_behind_higher_cosine_nonmatches` | Exakte Worttreffer mit niedrigerem Cosinus erscheinen vor unpassenden semantischen Nachbarn im ersten Suchfenster; Sammlung und Bibliothek bleiben eingehalten. |
+| `test_unchanged_pdf_refreshes_moved_path_without_reembedding_or_dropping_chunks` | Bereits verarbeitete PDFs erhalten nach Verschieben ihren aktuellen Dateipfad; Chunks bleiben erhalten und Embeddings werden nicht erneut berechnet. |
 | `test_cache_reuses_queries_and_matrices_but_obeys_scope_and_database_changes` | Wiederholte Suche und Diagramm teilen Vektoren; Sammlung, externe Datenbankänderungen und Modellkonfiguration werden berücksichtigt. |
 | `test_cache_memory_limit_falls_back_to_streaming_with_identical_results` | Bei überschrittenem Speicherbudget wird gestreamt; Ergebnisse bleiben gleich, Suchvektoren werden begrenzt gespeichert. |
 | `test_accelerated_chat_uses_two_calls_and_skips_unneeded_agent` | Erfolgreiche normale KI-Frage nutzt genau zwei simulierte Anbieteranfragen, ohne zusätzliche Tool-Runde; DeepSeek-Planung deaktiviert Thinking, die Auswertung behält es. |

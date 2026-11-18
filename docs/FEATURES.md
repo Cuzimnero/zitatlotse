@@ -2,7 +2,7 @@
 
 [Project page](../README.md)
 
-As of **0.30.0**. This list describes implemented features. Their presence does not mean that every combination of PDFs, models and Zotero versions has been tested reliably. See [test status](STATUS.md).
+Features in **0.32.0**. See [test status](STATUS.md) for the configurations and workflows covered by testing.
 
 ## 1. Zotero interface
 
@@ -17,6 +17,10 @@ As of **0.30.0**. This list describes implemented features. Their presence does 
 - Animated progress indicators for search, processing and connections; animated page-turning PDF pages below the question field.
 
 ## 2. Process PDFs
+
+- A sortable library column shows a green check for processed, current PDFs, a red cross for unprocessed PDFs, and a question mark when no usable document is available. Click to process a PDF or see the reason.
+- Tooltips explain partial processing, changed/missing PDFs, active work and unavailable status. Checks are batched and do not load search models.
+
 
 - **Process this PDF:** index the selected PDF attachment.
 - **Process this item:** index PDFs attached to the selected library item.
@@ -57,7 +61,7 @@ Acceleration is enabled by default: earlier provisional results, cached vectors 
 - Choose search speed in Settings. The fast option explicitly warns that accuracy may be lower and irrelevant matches more frequent. The setting saves automatically, applies to new direct/AI/evidence searches, and requires no database rebuild.
 - Match short terms, acronyms and literal queries regardless of capitalization.
 - Keep distinct real locations where a word occurs.
-- Deduplicate repeated original passages caused by overlapping chunks.
+- Deduplicate repeated passages using cached comparison text and a quick upper bound on similarity before the detailed comparison.
 - Discard hits that score too weakly locally.
 - Show quotations with paper title, PDF page, original text and search scores.
 - Paginate results with up to 20 quotations per page.
@@ -66,7 +70,8 @@ Acceleration is enabled by default: earlier provisional results, cached vectors 
 ## 6. AI search
 
 - Accept a question in natural language, such as a German question about English papers.
-- Formulate one search query per document language and retain the original question as an additional variant.
+- Choose automatic query languages from the selected library/collection, or select one language manually.
+- Use the matching language query for each document; direct search uses the entered terms without AI translation.
 - Use the local search pipeline for the formulated queries.
 - Let the selected model assess retrieved original passages.
 - Generate a short answer with numbered references to checked passages.

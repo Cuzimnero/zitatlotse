@@ -37,6 +37,19 @@ class SettingsTest(unittest.TestCase):
             self.assertEqual(settings.get_settings()["search_mode"], "fast")
             self.assertEqual(settings.save_settings({"search_mode":"thorough"})["search_mode"], "thorough")
 
+    def test_search_language_persists_normalizes_and_validates(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(settings, "DATA_DIR", Path(folder)), \
+                patch.object(settings, "SETTINGS_PATH", Path(folder) / "settings.json"), \
+                patch.object(settings, "_keyring", return_value=FakeKeyring()):
+            self.assertEqual(settings.get_settings()["search_language"], "auto")
+            self.assertEqual(settings.save_settings({"search_language":"EN-us"})["search_language"], "en")
+            self.assertEqual(settings.save_settings({"provider":"ollama", "model":"test"})["search_language"], "en")
+            for value in (None, False, [], "all", "und", "English", "en<script>"):
+                with self.assertRaises(ValueError):
+                    settings.save_settings({"search_language":value})
+            self.assertEqual(settings.get_settings()["search_language"], "en")
+
     def test_activity_display_persists_across_provider_changes(self):
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(settings, "DATA_DIR", Path(folder)), \

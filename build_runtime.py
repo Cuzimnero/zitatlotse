@@ -22,13 +22,18 @@ PYTHON_SHA256 = "97dae5274cc54867065e8d5a3226e48c35017ed332a0fdb0e27d5b582196129
 PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip"
 
 
+def sha256_file(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def download(url: str, destination: Path, expected_hash: str):
-    if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() == expected_hash:
+    if destination.exists() and sha256_file(destination) == expected_hash:
         return
     with urlopen(url, timeout=90) as response, destination.open("wb") as output:
         while block := response.read(1024 * 1024):
             output.write(block)
-    if hashlib.sha256(destination.read_bytes()).hexdigest() != expected_hash:
+    if sha256_file(destination) != expected_hash:
         raise ValueError(f"Download checksum mismatch: {destination.name}")
 
 
@@ -128,7 +133,7 @@ def main():
             if file.is_file() and "__pycache__" not in file.parts and "Scripts" not in file.relative_to(runtime).parts and file.suffix != ".pyc":
                 archive.write(file, file.relative_to(runtime).as_posix())
     manifest = {"platform": "win-x64", "python_version": PYTHON_VERSION,
-                "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(), "packages": packages}
+                "sha256": sha256_file(archive_path), "packages": packages}
     archive_path.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(archive_path, flush=True)
 

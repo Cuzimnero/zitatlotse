@@ -89,6 +89,18 @@ class AgentTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "abgelaufen"):
             agent.result_store.page({"library_id": 8, "search_id": result["search_id"]})
 
+    def test_agent_rejects_other_query_languages_before_search(self):
+        engine = SimpleNamespace(search_page=Mock(return_value={"results":[hit(1)]}))
+        with patch.object(agent, "call_agent_model", side_effect=[
+            tool("search_library", {"query":"deutsche Suche", "language":"de"}),
+            tool("search_library", {"query":"English evidence", "language":"en"}),
+            tool("finish_search", {"answer":"Beleg [1].", "has_evidence":True, "selected_refs":[1]})]):
+            result = agent.agentic_search({**self.data, "search_language":"en"}, engine, self.settings,
+                lambda _:"key", {"en":1, "de":1})
+        engine.search_page.assert_called_once()
+        self.assertEqual(engine.search_page.call_args.args[0]["query"], "English evidence")
+        self.assertEqual(result["search_language"], "en")
+
     def test_limit_and_duplicate_queries_do_not_run_extra_searches(self):
         engine = SimpleNamespace(search_page=Mock(return_value={"results": [hit(1)]}))
         self.settings["agentic_max_steps"] = 1
@@ -100,6 +112,37 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(engine.search_page.call_count, 1)
         self.assertTrue(model.call_args_list[1].kwargs["finish_only"])
         self.assertEqual(len(result["agent_steps"]), 1)
+
+    def test_parallel_queries_wait_for_first_results(self):
+        engine = SimpleNamespace(search_page=Mock(return_value={"results": [hit(1)]}))
+        first = tool("search_library", {"query": "initial evidence", "language": "en"})
+        first["calls"].append({"id": "call-2", "name": "search_library",
+                               "arguments": {"query": "extra evidence", "language": "en"}})
+
+        def model(messages, *_args, **_kwargs):
+            if len(messages) == 1:
+                return first
+            self.assertEqual(json.loads(messages[-2]["output"])["passages"][0]["ref"], 1)
+            self.assertEqual(messages[-1]["call_id"], "call-2")
+            self.assertIn("error", json.loads(messages[-1]["output"]))
+            return tool("finish_search", {"answer": "Evidence [1].", "has_evidence": True, "selected_refs": [1]})
+
+        with patch.object(agent, "call_agent_model", side_effect=model):
+            result = agent.agentic_search(self.data, engine, self.settings, lambda _: "key", {"en": 1})
+        engine.search_page.assert_called_once()
+        self.assertEqual([step["query"] for step in result["agent_steps"]], ["initial evidence"])
+
+    def test_followup_can_finish_without_a_new_search(self):
+        engine = SimpleNamespace(search_page=Mock())
+        data = {**self.data, "previous_queries": ["already attempted search"]}
+        finish = tool("finish_search", {"answer": "", "has_evidence": False, "selected_refs": []})
+        with patch.object(agent, "call_agent_model", return_value=finish) as model:
+            result = agent.agentic_search(data, engine, self.settings, lambda _: "key", {"en": 1})
+        model.assert_called_once()
+        self.assertFalse(model.call_args.kwargs["search_only"])
+        engine.search_page.assert_not_called()
+        self.assertEqual(result["agent_steps"], [])
+        self.assertEqual(result["selected_results"], [])
 
     def test_model_cannot_switch_library_or_execute_arbitrary_functions(self):
         engine = SimpleNamespace(search_page=Mock(return_value={"results": [hit(1)]}))

@@ -1,8 +1,10 @@
 # Extended test harness
 
-Run `python run_tests.py` from the repository with `requirements-dev.txt` installed and Node.js available. For candidate archive verification and the isolated Windows setup/process-loss test, use `python run_tests.py --xpi dist/Zitatlotse-0.30.0.xpi --startup`.
+Run `python run_tests.py` from the repository with `requirements-dev.txt` installed and Node.js available. For candidate archive verification and the isolated Windows setup/process-loss test, use `python run_tests.py --xpi dist/Zitatlotse-0.32.0.xpi --startup`.
 
 The runner produces per-method JSON and Markdown reports, individual logs and an optional disposable runtime installation under a new `outputs/test-runs` directory. It returns a nonzero exit code on failures. Existing output directories are never reused.
+
+Successful startup tests remove their extracted runtime and setup archives automatically, retaining reports and diagnostic data. Use `--keep-runtime` (or `-KeepRuntime` for the PowerShell test) to retain the runtime for debugging. Failed tests retain it.
 
 The Python suite uses isolated settings/indexes, a memory credential store, offline model settings and a loopback-only socket guard. Fourteen additional system tests combine actual generated PDFs, SQLite and local HTTP with deterministic embedding/LLM doubles. The JavaScript suites exercise mocked Zotero APIs. Optional archive validation compares shipped runtime code with the working tree and validates payload checksums. Optional Windows provisioning uses a separate port and only stops processes owned by its disposable directory.
 
@@ -19,6 +21,7 @@ python -m pip install -r requirements-dev.txt
 python -m unittest test_package
 python -m unittest discover -s backend -p "test_*.py"
 node test_plugin.js
+node test_processing_column.js
 node test_search_session.js
 node test_runtime.js
 python package.py --source-only
@@ -31,7 +34,7 @@ These tests use temporary/synthetic data and simulated encoders or provider resp
 ```powershell
 python build_runtime.py
 python package.py
-.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.30.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
+.\test_runtime_setup.ps1 -Xpi .\dist\Zitatlotse-0.32.0.xpi -TestRoot .\outputs\runtime-test -Port 18765
 ```
 
 The check installs the bundled runtime in a separate test folder, removes Python from `PATH` and blocks model downloads. It checks actual service availability, progress, recovery after complete process loss and preservation of the test database. It does not use the regular installation on port 8765 or make cloud requests. It does not reboot the operating system.

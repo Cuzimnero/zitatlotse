@@ -38,6 +38,17 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(engine.search_page.call_args_list[0].args[0]["search_mode"], "fast")
         self.assertTrue(all(h["library_id"] == 7 for h in result["results"]))
 
+    def test_evidence_manual_language_ignores_other_language_queries(self):
+        engine = SimpleNamespace(languages=Mock(return_value={"en":1, "de":1}), search_page=Mock(return_value={
+            "results":[hit(1)], "has_more":False}))
+        llm = Mock(side_effect=['{"queries":{"en":["overfitting evidence"],"de":["Überanpassung"]}}',
+            '{"assessments":[{"ref":1,"stance":"pro","reason":"Direct evidence"}]}'])
+        result = evidence.evidence_search({**self.data, "search_language":"en"}, engine,
+            self.settings, lambda _:"", llm)
+        engine.search_page.assert_called_once()
+        self.assertEqual(engine.search_page.call_args.args[0]["query"], "overfitting evidence")
+        self.assertEqual(list(result["queries"].values()), ["overfitting evidence"])
+
     def test_neutral_only_has_no_percentage_and_no_selected_quotes(self):
         engine = SimpleNamespace(languages=Mock(return_value={"en":1}), search_page=Mock(return_value={
             "results":[hit(1)], "has_more":False}))
@@ -92,7 +103,7 @@ class EvidenceTest(unittest.TestCase):
         engine = SimpleNamespace(languages=lambda _: {"en":1}, search_page=Mock(side_effect=pages))
         def llm(prompt, _):
             if "Passages: " not in prompt:
-                return '{"queries":{"en":["patch representation quality","patch computational throughput"]}}'
+                return '{"queries":{"en":["patch representation quality","patch computational throughput","extra variant"]}}'
             sources = json.loads(prompt.split("\nPassages: ", 1)[1])
             return json.dumps({"assessments":[{"ref":s["ref"], "stance":"pro" if s["ref"] < 3 else "contra",
                 "scope":"aspect", "point":"Measured aspect", "reason":"Overall judgment remains open"} for s in sources]})

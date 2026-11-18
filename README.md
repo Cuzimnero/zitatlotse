@@ -6,9 +6,9 @@
 
 Zitatlotse is an open-source [Zotero](https://www.zotero.org/) add-on for searching, reviewing and saving evidence from your PDF library.
 
-**Zotero 10 · Windows x64 · v0.30.0 · Experimental · MIT project code**
+**Zotero 10 · Windows x64 · v0.32.0 · Experimental · MIT project code**
 
-[Download XPI](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.30.0/Zitatlotse-0.30.0.xpi) · [Release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.30.0) · [All features](docs/FEATURES.md)
+[Download XPI](https://github.com/Cuzimnero/zitatlotse/releases/download/v0.32.0/Zitatlotse-0.32.0.xpi) · [Release](https://github.com/Cuzimnero/zitatlotse/releases/tag/v0.32.0) · [All features](docs/FEATURES.md)
 
 ![AI search in Zotero](docs/assets/screenshots/ai-search.png)
 
@@ -33,9 +33,12 @@ Zitatlotse is an open-source [Zotero](https://www.zotero.org/) add-on for search
 
 The XPI includes the Windows Python runtime. Search models download on first use. Existing indexes and saved quotations survive updates.
 
-## New in 0.30.0
+## New in 0.32.0
 
-Earlier results, fewer AI calls and reusable vector caches. Acceleration is enabled by default; compare workflows under **Settings → Search speed → Try search acceleration**. Initial results are provisional; full evidence assessment still checks every retrieved passage. [Details](docs/PERFORMANCE-EXPERIMENT.md).
+- **Faster local search.** Duplicate detection reuses normalized text and skips detailed comparisons when a pair cannot meet the similarity threshold.
+- **Search language.** Choose **Automatic** to use indexed document languages in the current library or collection, or select one language for AI and evidence queries. Enter your own terms for direct search.
+
+[Benchmark and release details](docs/releases/v0.32.0.md)
 
 ## Notes
 

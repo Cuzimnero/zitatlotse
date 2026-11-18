@@ -13,6 +13,7 @@ import uuid
 from collections import Counter
 from difflib import SequenceMatcher
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -165,12 +166,24 @@ def chunks(text: str, target_words: int = 100, overlap_words: int = 20) -> list[
     return [chunk for chunk in result if len(chunk) >= 25]
 
 
+@lru_cache(maxsize=2048)
+def quote_fingerprint(text: str) -> str:
+    """Reuse normalized comparison text with a bounded, in-memory cache."""
+    return re.sub(r"\W+", " ", text.casefold()).strip()
+
+
 def same_quote(a: str, b: str) -> bool:
     """Treat small overlap-related variants of a quote as one passage."""
-    a = re.sub(r"\W+", " ", a.casefold()).strip()
-    b = re.sub(r"\W+", " ", b.casefold()).strip()
-    return (a == b or (min(len(a), len(b)) >= 20 and (a in b or b in a))
-            or SequenceMatcher(None, a, b).ratio() >= 0.88)
+    a, b = quote_fingerprint(a), quote_fingerprint(b)
+    shorter = min(len(a), len(b))
+    if a == b or (shorter >= 20 and (a in b or b in a)):
+        return True
+    # Both bounds are at least the final ratio, so rejected pairs cannot
+    # reach the existing threshold. Check containment first, as above.
+    if 2.0 * shorter / (len(a) + len(b)) < 0.88:
+        return False
+    matcher = SequenceMatcher(None, a, b)
+    return matcher.quick_ratio() >= 0.88 and matcher.ratio() >= 0.88
 
 
 def quote_position(page, quote: str) -> dict:
@@ -381,10 +394,10 @@ class Engine:
                         first_page = next(iter(pdf), None)
                         language = detect_language(first_page.get_text("text")) if first_page else "und"
                 language = language or previous["language"]
-                db.execute("UPDATE documents SET collection_ids=?, title=?, creators=?, year=?, zotero_uri=?, language=? WHERE library_id=? AND attachment_key=?",
+                db.execute("UPDATE documents SET collection_ids=?, title=?, creators=?, year=?, zotero_uri=?, language=?, pdf_path=? WHERE library_id=? AND attachment_key=?",
                            (json.dumps(collection_ids), title, str(data.get("creators", "")),
                             str(data.get("year", "")), str(data.get("zotero_uri", "")), language,
-                            library_id, attachment_key))
+                            str(path), library_id, attachment_key))
                 if (previous["topic_flags"] == "[]" or previous["topic_embedding"] == "[]"
                         or previous["title"] != title):
                     self._refresh_topic(db, library_id, attachment_key, title)
@@ -456,8 +469,7 @@ class Engine:
             docs = [doc for doc in docs if doc["attachment_key"] in allowed]
         if not docs:
             return []
-        target_queries = lambda language: list(dict.fromkeys(filter(None, (
-            queries.get(language or "und") or queries.get("default") or query, query))))
+        target_queries = lambda language: [queries.get(language or "und") or queries.get("default") or query]
         query_vectors = self.retrieval_cache.query_vectors(self,
             [text for doc in docs for text in target_queries(doc["language"])])
         document_info = {}
@@ -545,7 +557,11 @@ class Engine:
                 cutoff = max(cutoff, profile["cosine"])
             # Exact occurrences qualify even if a one-word query has low cosine.
             ranked = [entry for entry in ranked if entry[3] or entry[0] >= cutoff]
-        ranked.sort(key=lambda entry: (-entry[0], entry[1]))
+        # Direct literal queries must expose real occurrences before semantic
+        # neighbours. Otherwise the first progressive window can contain only
+        # nonmatches, which literal_only then correctly rejects as quotations.
+        ranked.sort(key=lambda entry: ((not entry[3]) if not evidence_mode and literal_pattern else False,
+                                       -entry[0], entry[1]))
         return ranked
 
     def _fill_search_session(self, db, session: dict, max_candidates=None) -> None:
@@ -589,7 +605,7 @@ class Engine:
                 (session["term_sample_size"] + 1) / (term_frequency[key] + 1))
             for score, bert, row, current_query, cosine in scored:
                 def record_quote(part: str, literal: bool = False) -> bool:
-                    fingerprint = re.sub(r"\W+", " ", part.casefold()).strip()
+                    fingerprint = quote_fingerprint(part)
                     if literal:
                         location = (row["attachment_key"], row["page"], fingerprint)
                         if location in session["seen_locations"]:
@@ -844,6 +860,24 @@ class Engine:
             if not cursor.rowcount:
                 raise ValueError("Gespeichertes Zitat nicht gefunden")
         return {"ok": True}
+
+    def processing_status(self, data: dict) -> dict:
+        """Small read-only batches for the library column; never load ML models."""
+        library_id, keys = data.get("library_id"), data.get("attachment_keys")
+        if type(library_id) is not int or library_id < 1 or not isinstance(keys, list) or len(keys) > 200 or any(
+                not isinstance(key, str) or not 1 <= len(key) <= 64 for key in keys):
+            raise ValueError("Ungültige Statusauswahl")
+        keys = sorted(set(keys))
+        if not keys:
+            return {"library_id": library_id, "documents": []}
+        # Independent connection: column reads must not wait behind BERTScore.
+        with self._connect() as db:
+            rows = db.execute("SELECT d.attachment_key,d.file_mtime,d.file_size,"
+                "SUM(CASE WHEN length(c.embedding_blob)>0 OR c.embedding NOT IN ('','[]') THEN 1 ELSE 0 END) AS chunks "
+                "FROM documents d LEFT JOIN chunks c ON d.library_id=c.library_id AND d.attachment_key=c.attachment_key "
+                "WHERE d.library_id=? AND d.attachment_key IN (" + ",".join("?" for _ in keys) + ") "
+                "GROUP BY d.attachment_key", (library_id, *keys)).fetchall()
+        return {"library_id": library_id, "documents": [dict(row) for row in rows]}
 
     def stats(self, library_id: int) -> dict:
         """Number of indexed PDFs and searchable chunks in one library."""

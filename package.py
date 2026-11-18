@@ -14,13 +14,19 @@ TOP_LEVEL = (
     "README.md", "LICENSE", "THIRD_PARTY.md", "CONTRIBUTING.md",
     "SECURITY.md", ".gitignore", ".gitattributes", "package.py",
     "requirements-dev.txt", "updates.json", "test_package.py", "Install-Zitatlotse.ps1", "Start-Zitatlotse.ps1",
-    "test_plugin.js", "test_search_session.js", "smoke_service_start.js", "run_tests.py",
+    "test_plugin.js", "test_search_session.js", "test_processing_column.js", "smoke_service_start.js", "run_tests.py",
     "smoke_autostart.ps1", "build_runtime.py", "test_runtime.js", "test_runtime_setup.ps1",
 )
 PLUGIN = (
     "manifest.json", "bootstrap.js", "search.svg",
     "locale/de-DE/zitatfinder.ftl", "locale/en-US/zitatfinder.ftl",
 )
+
+
+def sha256_file(path: Path) -> str:
+    """Hash large runtime archives without loading them into RAM."""
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def validate_manifest(manifest):
@@ -72,7 +78,7 @@ def main():
         if not corresponding_source.is_file():
             raise SystemExit("Corresponding third-party source missing. Run build_runtime.py first.")
         runtime_meta = json.loads(args.runtime.with_suffix(".json").read_text(encoding="utf-8"))
-        runtime_hash = hashlib.sha256(args.runtime.read_bytes()).hexdigest()
+        runtime_hash = sha256_file(args.runtime)
         if runtime_hash != runtime_meta["sha256"] or runtime_meta["platform"] != "win-x64":
             raise SystemExit("Runtime bundle checksum/platform mismatch")
         backend_zip = args.output / "backend-payload.zip"
@@ -84,7 +90,7 @@ def main():
             archive.write(ROOT / "backend" / "requirements.txt", "requirements.txt")
             archive.write(ROOT / "LICENSE", "LICENSE")
         metadata = {"version": version, "platform":"win-x64", "runtime_sha256":runtime_hash,
-                    "backend_sha256":hashlib.sha256(backend_zip.read_bytes()).hexdigest(),
+                    "backend_sha256":sha256_file(backend_zip),
                     "python_version":runtime_meta["python_version"]}
         xpi = args.output / f"Zitatlotse-{version}.xpi"
         with ZipFile(xpi, "w", ZIP_DEFLATED) as archive:
@@ -107,7 +113,7 @@ def main():
     artifacts.append(source)
     checksums = args.output / "SHA256SUMS.txt"
     checksums.write_text("".join(
-        f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}\n"
+        f"{sha256_file(file)}  {file.name}\n"
         for file in artifacts), encoding="utf-8")
     for file in [*artifacts, checksums]:
         print(file)

@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+import threading
 from contextlib import closing
 from unittest.mock import patch, Mock
 
@@ -51,6 +52,43 @@ class PerformanceTest(unittest.TestCase):
                                (library, key, i + 1, i, text, np.array([1., 0.], dtype='<f4').tobytes()))
         self.data = {"library_id":1, "collection_id":10, "attachment_keys":["A"], "query":"Average", "limit":20}
 
+    def test_translated_query_is_the_only_vector_and_bert_query_for_english_scope(self):
+        with patch.object(self.scorer, "score", wraps=self.scorer.score) as score:
+            self.engine.search_page({**self.data, "query":"Wie hoch ist der Fehler?", "progressive":True,
+                                     "queries":{"en":"Average validation error"}})
+        self.assertEqual(len(self.encoder.calls), 1)
+        self.assertEqual(len(self.encoder.calls[0]), 1)
+        self.assertTrue(self.encoder.calls[0][0].endswith("Average validation error"))
+        self.assertEqual(set(score.call_args.args[1]), {"Average validation error"})
+
+    def test_processing_status_uses_actual_chunks_and_is_library_scoped(self):
+        with self.engine._connect() as db:
+            db.execute("DELETE FROM chunks WHERE library_id=1 AND attachment_key='B'")
+        result = self.engine.processing_status({"library_id":1, "attachment_keys":["A","B","MISSING"]})
+        rows = {row["attachment_key"]:row for row in result["documents"]}
+        self.assertEqual(rows["A"]["chunks"],120)
+        self.assertEqual(rows["B"]["chunks"],0)
+        self.assertNotIn("MISSING",rows)
+        self.assertNotIn("pdf_path",rows["A"])
+        self.assertEqual(self.engine.processing_status({"library_id":3,"attachment_keys":["A"]})["documents"],[])
+        self.assertEqual(self.engine.processing_status({"library_id":1,"attachment_keys":[]})["documents"],[])
+        for data in ({"library_id":True,"attachment_keys":["A"]},
+                     {"library_id":1,"attachment_keys":["A"]*201},
+                     {"library_id":1,"attachment_keys":[4]}):
+            with self.assertRaises(ValueError):self.engine.processing_status(data)
+        self.assertEqual(self.encoder.calls,[])
+        self.assertEqual(self.scorer.count,0)
+
+    def test_processing_status_does_not_wait_for_the_search_model_lock(self):
+        results=[]
+        thread=threading.Thread(target=lambda:results.append(self.engine.processing_status({"library_id":1,"attachment_keys":["A"]})))
+        with self.engine.lock:
+            thread.start();thread.join(timeout=2)
+            blocked=thread.is_alive()
+        thread.join(timeout=2)
+        self.assertFalse(blocked)
+        self.assertEqual(results[0]["documents"][0]["chunks"],120)
+
     def test_progressive_first_window_is_bounded_and_all_locations_remain_reachable(self):
         first = self.engine.search_page({**self.data, "progressive":True})
         self.assertEqual(self.scorer.count, 40)
@@ -87,6 +125,33 @@ class PerformanceTest(unittest.TestCase):
             second = self.engine.search_page({**self.data, "search_id":first["search_id"], "offset":0})
             self.assertEqual(second["results"], [])
             self.assertEqual(second["scored_chunks"], 80)
+
+    def test_direct_literal_hits_are_not_hidden_behind_higher_cosine_nonmatches(self):
+        with self.engine._connect() as db:
+            db.execute("UPDATE chunks SET text=replace(text,'Average','Unrelated') "
+                       "WHERE library_id=1 AND attachment_key='A' AND page<=110")
+            db.execute("UPDATE chunks SET embedding_blob=? WHERE library_id=1 AND attachment_key='A' AND page>110",
+                       (np.array([.3, .9539392], dtype='<f4').tobytes(),))
+        first = self.engine.search_page({**self.data, "progressive":True})
+        self.assertEqual(first["scored_chunks"], 40)
+        self.assertEqual(len(first["results"]), 10)
+        self.assertEqual({h["page"] for h in first["results"]}, set(range(111, 121)))
+        self.assertTrue(all(h["match_type"] == "literal" and h["attachment_key"] == "A"
+                            and h["library_id"] == 1 for h in first["results"]))
+
+    def test_unchanged_pdf_refreshes_moved_path_without_reembedding_or_dropping_chunks(self):
+        path = self.root / "moved.pdf"
+        path.write_bytes(b"fake PDF for unchanged-file check")
+        with self.engine._connect() as db:
+            db.execute("UPDATE documents SET file_mtime=?,file_size=? WHERE library_id=1 AND attachment_key='A'",
+                       (path.stat().st_mtime, path.stat().st_size))
+        result = self.engine.index_pdf({"library_id":1, "item_key":"A", "attachment_key":"A", "title":"A",
+                                       "pdf_path":str(path), "language":"en"})
+        self.assertEqual(result["status"], "unchanged")
+        self.assertEqual(self.encoder.calls, [])
+        with self.engine._connect() as db:
+            self.assertEqual(db.execute("SELECT pdf_path FROM documents WHERE library_id=1 AND attachment_key='A'").fetchone()[0], str(path))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM chunks WHERE library_id=1 AND attachment_key='A'").fetchone()[0], 120)
 
     def test_cache_reuses_queries_and_matrices_but_obeys_scope_and_database_changes(self):
         self.engine.search_page(self.data)
